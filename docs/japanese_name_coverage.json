@@ -1,0 +1,503 @@
+{
+  "tables": {
+    "itemData": {
+      "named_entries": 2943,
+      "mapped_japanese": 2939,
+      "fallback": 4
+    },
+    "armorSeriesData": {
+      "named_entries": 6277,
+      "mapped_japanese": 6277,
+      "fallback": 0
+    },
+    "otWeaponData": {
+      "named_entries": 500,
+      "mapped_japanese": 499,
+      "fallback": 1
+    },
+    "otArmorData": {
+      "named_entries": 1038,
+      "mapped_japanese": 1007,
+      "fallback": 31
+    },
+    "weapon00MsgData": {
+      "named_entries": 411,
+      "mapped_japanese": 407,
+      "fallback": 4
+    },
+    "weapon01MsgData": {
+      "named_entries": 384,
+      "mapped_japanese": 380,
+      "fallback": 4
+    },
+    "weapon02MsgData": {
+      "named_entries": 396,
+      "mapped_japanese": 392,
+      "fallback": 4
+    },
+    "weapon03MsgData": {
+      "named_entries": 380,
+      "mapped_japanese": 377,
+      "fallback": 3
+    },
+    "weapon04MsgData": {
+      "named_entries": 327,
+      "mapped_japanese": 324,
+      "fallback": 3
+    },
+    "weapon06MsgData": {
+      "named_entries": 330,
+      "mapped_japanese": 327,
+      "fallback": 3
+    },
+    "weapon07MsgData": {
+      "named_entries": 375,
+      "mapped_japanese": 372,
+      "fallback": 3
+    },
+    "weapon08MsgData": {
+      "named_entries": 327,
+      "mapped_japanese": 324,
+      "fallback": 3
+    },
+    "weapon09MsgData": {
+      "named_entries": 345,
+      "mapped_japanese": 342,
+      "fallback": 3
+    },
+    "weapon10MsgData": {
+      "named_entries": 324,
+      "mapped_japanese": 321,
+      "fallback": 3
+    },
+    "weapon11MsgData": {
+      "named_entries": 375,
+      "mapped_japanese": 372,
+      "fallback": 3
+    },
+    "weapon12MsgData": {
+      "named_entries": 333,
+      "mapped_japanese": 330,
+      "fallback": 3
+    },
+    "weapon13MsgData": {
+      "named_entries": 249,
+      "mapped_japanese": 246,
+      "fallback": 3
+    },
+    "weapon14MsgData": {
+      "named_entries": 240,
+      "mapped_japanese": 237,
+      "fallback": 3
+    }
+  },
+  "unmapped": [
+    {
+      "table": "itemData",
+      "index": 0,
+      "english": "--------"
+    },
+    {
+      "table": "itemData",
+      "index": 186,
+      "english": "(No Item)"
+    },
+    {
+      "table": "itemData",
+      "index": 410,
+      "english": "Rapid S"
+    },
+    {
+      "table": "itemData",
+      "index": 412,
+      "english": "(None)"
+    },
+    {
+      "table": "otWeaponData",
+      "index": 0,
+      "english": "Hello"
+    },
+    {
+      "table": "otArmorData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1,
+      "english": "(None)"
+    },
+    {
+      "table": "otArmorData",
+      "index": 677,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 768,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 952,
+      "english": "(None)"
+    },
+    {
+      "table": "otArmorData",
+      "index": 956,
+      "english": "(None)"
+    },
+    {
+      "table": "otArmorData",
+      "index": 976,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1008,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1012,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1016,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1040,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1060,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1061,
+      "english": "@"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1084,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1088,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1100,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1220,
+      "english": "(None)"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1465,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 1800,
+      "english": "(None)"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2012,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2020,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2024,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2040,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2048,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2052,
+      "english": "―"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2064,
+      "english": "@"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2072,
+      "english": "@"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2076,
+      "english": "@"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2088,
+      "english": "@"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2097,
+      "english": "@"
+    },
+    {
+      "table": "otArmorData",
+      "index": 2100,
+      "english": "@"
+    },
+    {
+      "table": "weapon00MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon00MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon00MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon00MsgData",
+      "index": 454,
+      "english": "@"
+    },
+    {
+      "table": "weapon01MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon01MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon01MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon01MsgData",
+      "index": 406,
+      "english": "@"
+    },
+    {
+      "table": "weapon02MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon02MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon02MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon02MsgData",
+      "index": 424,
+      "english": "@"
+    },
+    {
+      "table": "weapon03MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon03MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon03MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon04MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon04MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon04MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon06MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon06MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon06MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon07MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon07MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon07MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon08MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon08MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon08MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon09MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon09MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon09MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon10MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon10MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon10MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon11MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon11MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon11MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon12MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon12MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon12MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon13MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon13MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon13MsgData",
+      "index": 4,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon14MsgData",
+      "index": 0,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon14MsgData",
+      "index": 2,
+      "english": "(None)"
+    },
+    {
+      "table": "weapon14MsgData",
+      "index": 4,
+      "english": "(None)"
+    }
+  ],
+  "referenced_japanese_fallbacks": [],
+  "reference_names_checked": 12012
+}

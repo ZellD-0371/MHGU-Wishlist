@@ -1,0 +1,30 @@
+/target/
+/dist/
+/*.nro
+/*.zip
+
+# Local game runs, player data, diagnostics, and generated previews.
+/save/
+/mods/
+/shots/
+/cache/
+/design/previews/
+/README_DRAFT_KO.md
+/Run-Test.cmd
+*.log
+*.dmp
+*.stackdump
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.vs/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.tmp
+*.bak
+
+# Cargo.lock, conf/wishlist.ini, generated Rust data, and assets are build inputs.
