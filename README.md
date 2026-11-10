@@ -58,13 +58,6 @@ At the Smithy, hold L3 and press R3 to open the wishlist. In villages and quest 
 | R3 / F5 at the Smithy | Register the selected equipment / Confirm removal of an existing entry |
 | L3 + R3 at the Smithy or in the in-game menu | Open the wishlist |
 | Backtick key ( ` ) | Open the wishlist |
-| Up / Down | Select an entry on the current page |
-| D-pad Left / Right or PageUp / PageDown | Change pages |
-| L / R or Tab | Switch between the Registered Equipment and Total Materials tabs |
-| ZL / ZR or Q / E | Switch equipment detail pages |
-| A / Enter | Confirm / Enter material details |
-| B / Esc | Cancel / Go back / Close |
-| X / Delete in Registered Equipment | Confirm removal of the selected entry |
 
 Changing the button layout changes the displayed icons. Actual controller bindings follow your Recomp settings. The wishlist cannot be opened on the title or character selection screen.
 
