@@ -55,7 +55,7 @@ At the Smithy, hold L3 and press R3 to open the wishlist. In villages and quest 
 
 | Input — Nintendo layout | Action |
 | --- | --- |
-| R3 / F5 at the Smithy | Register the selected equipment / Confirm removal of an existing entry |
+| R3 / F5 at the Smithy | Register the selected equipment / removal of an existing entry |
 | L3 + R3 at the Smithy or in the in-game menu | Open the wishlist |
 | Backtick key ( ` ) | Open the wishlist |
 
