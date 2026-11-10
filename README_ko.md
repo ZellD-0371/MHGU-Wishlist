@@ -1,4 +1,4 @@
-# MHGU Wishlist v1.0.0
+# MHGU Wishlist
 
 Monster Hunter Generations Ultimate의 가공점에 찜 목록을 추가하는 Forge 모드입니다. 만들거나 강화할 장비를 등록하고, 필요한 소재와 소지 수량을 확인할 수 있습니다. 소재가 모두 모이면 알림을 표시하며, 해당 장비의 생산·강화가 완료되면 등록을 자동으로 삭제합니다.
 
