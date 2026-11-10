@@ -10,6 +10,8 @@ files={
  'romfs/nativeNX/plugins/wishlist/wishlist-atlas.rgba':ROOT/'assets/wishlist-atlas.rgba',
  'romfs/nativeNX/plugins/wishlist/NotoSansCJKkr-Regular.otf':ROOT/'assets/NotoSansCJKkr-Regular.otf',
  'NOTO_LICENSE.txt':ROOT/'assets/NOTO_LICENSE.txt',
+ 'LICENSE':ROOT/'LICENSE',
+ 'README.md':ROOT/'README.md',
  'README_KO.md':ROOT/'README_KO.md',
  'VALIDATION.md':ROOT/'VALIDATION.md',
  'docs/crash-v0.2.1.md':ROOT/'docs/crash-v0.2.1.md',
