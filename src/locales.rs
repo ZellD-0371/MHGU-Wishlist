@@ -4,7 +4,7 @@ pub const LANGUAGE:[&str;9]=["Language","语言","語言","言語","언어","Spr
 // Every UI string has exactly nine entries in the requested stable language order.
 pub type Label=[&'static str;9];
 pub const TITLE:Label=["Wishlist","愿望清单","願望清單","ウィッシュリスト","찜 목록","Wunschliste","Liste de souhaits","Lista desideri","Lista de deseos"];
-pub const REGISTER:Label=["Add to wishlist","加入愿望清单","加入願望清單","リストに登録","찜 등록","Zur Wunschliste","Ajouter à la liste","Aggiungi alla lista","Añadir a la lista"];
+pub const REGISTER:Label=["Add","加入收藏","加入收藏","登録","찜 등록","Eintragen","Ajouter","Aggiungi","Añadir"];
 pub const REGISTER_ACTION:Label=["Add to wishlist","加入愿望清单","加入願望清單","ウィッシュリストに登録","찜 목록에 등록","Zur Wunschliste hinzufügen","Ajouter à la liste de souhaits","Aggiungi alla lista desideri","Añadir a la lista de deseos"];
 pub const REGISTERED_SLOT:Label=["(Already registered)","（已登记）","（已登錄）","（登録済みです）","(이미 등록되어 있습니다)","(Bereits eingetragen)","(Déjà enregistré)","(Già registrato)","(Ya registrado)"];
 pub const AUTO_SAVE:Label=["Settings are saved automatically.","设置会自动保存。","設定會自動儲存。","設定は自動保存されます。","설정은 자동으로 저장됩니다.","Einstellungen werden automatisch gespeichert.","Les réglages sont enregistrés automatiquement.","Le impostazioni vengono salvate automaticamente.","Los ajustes se guardan automáticamente."];
@@ -74,4 +74,4 @@ pub const INSPECT_ENTRY:Label=["View the registered contents.","查看登记内�
 
 pub const HOTKEYS:Label=["R3 / F5: Register / Remove | `: Wishlist\nL3 + R3: Wishlist at smithy or + menu","R3 / F5: 登记 / 删除 | `: 愿望清单\nL3 + R3: 加工店或 + 菜单","R3 / F5: 登錄 / 刪除 | `: 願望清單\nL3 + R3: 加工店或 + 選單","R3 / F5: 登録 / 解除 | `: リスト\nL3 + R3: 加工屋または + メニュー","R3 / F5: 찜 등록 / 삭제 | `: 찜 목록\nL3 + R3: 가공점 또는 + 메뉴에서 찜 목록 열기","R3 / F5: Eintragen / Entfernen | `: Wunschliste\nL3 + R3: Schmiede oder +-Menü","R3 / F5 : Inscrire / Retirer | F6 : Liste\nL3 + R3 : Forge ou menu +","R3 / F5: Registra / Rimuovi | `: Lista\nL3 + R3: Forgia o menu +","R3 / F5: Registrar / Quitar | `: Lista\nL3 + R3: Herrería o menú +"];
 
-pub const QUICK_REMOVE:Label=["Remove wishlist","取消愿望清单","取消願望清單","登録解除","찜 삭제","Wunsch entfernen","Retirer de la liste","Rimuovi dalla lista","Quitar de la lista"];
+pub const QUICK_REMOVE:Label=["Remove","取消收藏","取消收藏","登録解除","찜 삭제","Entfernen","Retirer","Rimuovi","Quitar"];

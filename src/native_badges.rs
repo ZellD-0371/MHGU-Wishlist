@@ -51,7 +51,13 @@ fn grid_icon(owner:u32,group:u32,object:u32,equip:u32,a4:u32,a5:u32)->u32{
 #[forge::hook(offset=0x56da30)]
 fn destroy_ui(owner:u32)->u32{for p in &LISTS{let _=p.compare_exchange(owner,0,Ordering::AcqRel,Ordering::Relaxed);}CACHE.with(|cache|{for b in &mut cache.0{if b.owner==owner{*b=EMPTY;}}});original!(owner)}
 pub fn install(base:u32)->bool{
- if unsafe{rd(base+0x56da30)}!=0xe92d4010||unsafe{rd(base+0x6f8e48)}!=0xe92d4ff0||unsafe{rd(base+0x58b908)}!=0xe92d4ff0||unsafe{rd(base+0x56ea38)}!=0xe92d4bf0{return false}
+ // Better_Skillinfo also hooks the shared destructor. Forge chains original!()
+ // through its previous detour; validate the intact tail rather than disabling
+ // all badges solely because that entry already contains Forge's jump.
+ for (offset,expected) in [(0x56da30,[0xe92d4010,0xe1a04000,0xe59f0084,0xe79f0000]),(0x6f8e48,[0xe92d4ff0,0xe24dd054,0xe1a04000,0xe5940004]),(0x58b908,[0xe92d4ff0,0xe24dd014,0xe3a01000,0xe3a02001]),(0x56ea38,[0xe92d4bf0,0xe24dd010,0xe1a09002,0xe1a05001])]{
+  let site=base+offset;let words=core::array::from_fn(|i|unsafe{rd(site+i as u32*4)});
+  if !crate::hook_guard::matches(words,expected,site){forge::log::prelude::error!("[wishlist] badge entry +{:X} rejected ({:08X})",offset,words[0]);return false}
+ }
  forge::install_hook!(base,destroy_ui);forge::install_hook!(base,hunter_update);forge::install_hook!(base,list_update);forge::install_hook!(base,grid_icon);true
 }
 fn object(layout:u32,group:u32,index:u32)->Option<u32>{

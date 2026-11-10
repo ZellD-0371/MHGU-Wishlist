@@ -20,7 +20,7 @@ Monster Hunter Generations Ultimate의 가공점에 찜 목록을 추가하는 F
 ## 설치
 
 1. 게임을 종료합니다.
-2. `Wishlist_v1.0.0.zip`을 압축 해제합니다.
+2. `Wishlist_vX.X.X.zip`을 압축 해제합니다.
 3. 압축 안의 `Wishlist` 폴더를 Recomp 실행 파일 옆의 `mods` 폴더에 넣습니다.
 4. 게임을 실행합니다. 모드 관리에서 별도로 비활성화한 경우 활성화합니다.
 
@@ -33,6 +33,7 @@ mods/
             ├─ wishlist.nro
             └─ wishlist/
                ├─ ui-text.bin
+               ├─ ui-names.bin
                ├─ wishlist-atlas.rgba
                └─ NotoSansCJKkr-Regular.otf
 ```

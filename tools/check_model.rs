@@ -8,6 +8,16 @@
 #[path="../src/session.rs"]mod session;
 #[path="../src/profiles.rs"]mod profiles;
 use model::*;
+#[path="../src/hook_guard.rs"]mod hook_guard;
+#[test]fn shared_destructor_keeps_existing_forge_hook_chain(){
+ let original=[0xe92d4010,0xe1a04000,0xe59f0084,0xe79f0000];
+ assert!(hook_guard::matches(original,original,0x76da30));
+ assert!(hook_guard::matches([0xe51ff004,0x03363d50,original[2],original[3]],original,0x76da30));
+ assert!(!hook_guard::matches([0xe51ff004,0,original[2],original[3]],original,0x76da30));
+ assert!(!hook_guard::matches([0xe51ff004,0x03363d51,original[2],original[3]],original,0x76da30));
+ assert!(!hook_guard::matches([0xe51ff004,0x03363d50,0,original[3]],original,0x76da30));
+ assert!(!hook_guard::matches([0xe92d4010,0,original[2],original[3]],original,0x76da30));
+}
 #[test]fn material_focus_preserves_equipment_cursor_and_returns(){
  let mut f=interaction::Focus::default();f.enter(0);assert!(!f.material);
  f.enter(4);assert!(f.material);assert_eq!(f.index,0);f.step(4,-1);assert_eq!(f.index,3);f.step(4,1);assert_eq!(f.index,0);assert!(f.back());assert!(!f.back());
@@ -145,6 +155,23 @@ fn recipe()->Recipe{Recipe{kind:2,id:4,materials:[Material{id:318,count:2},Mater
 }
 
 #[path="../src/text_blob.rs"]mod text_blob;
+#[path="../src/name_data.rs"]mod name_data;
+mod material_text_source{include!("../src/item_text_generated.rs");}
+#[test]fn external_names_preserve_all_source_rows_and_nine_languages(){
+ let data=include_bytes!("../assets/ui-names.bin");assert!(text_blob::valid(data));
+ let tables=[generated::ITEMDATA,generated::ARMORSERIESDATA,generated::OTWEAPONDATA,generated::OTARMORDATA,
+ generated::WEAPON00MSGDATA,generated::WEAPON01MSGDATA,generated::WEAPON02MSGDATA,generated::WEAPON03MSGDATA,
+ generated::WEAPON04MSGDATA,generated::WEAPON06MSGDATA,generated::WEAPON07MSGDATA,generated::WEAPON08MSGDATA,
+ generated::WEAPON09MSGDATA,generated::WEAPON10MSGDATA,generated::WEAPON11MSGDATA,generated::WEAPON12MSGDATA,
+ generated::WEAPON13MSGDATA,generated::WEAPON14MSGDATA];
+ for (table,rows) in tables.iter().enumerate(){for (index,row) in rows.iter().enumerate(){for lang in 0..9{
+  assert_eq!(name_data::get(table as u8+1,index,lang),row[lang],"table {} row {} lang {}",table,index,lang);
+ }}}
+ for (index,row) in material_text_source::ITEM_TEXT.iter().enumerate(){for lang in 0..9{
+  assert_eq!(name_data::material_description(index as u16,lang),row.1[lang]);
+ }}
+ assert_eq!(name_data::get(255,0,0),"");assert_eq!(name_data::get(1,usize::MAX,0),"");assert_eq!(name_data::get(1,0,9),"");
+}
 #[test]fn native_sharpness_matches_reported_weapons(){
  let breaker=equipment::get(Recipe{kind:9,id:51,level:4,..Recipe::default()}).unwrap();
  assert_eq!(breaker.sharp,[100,70,30,120,70,10,0]);
@@ -248,4 +275,13 @@ fn tick_queue(q:&mut notifications::Queue,count:usize){for _ in 0..count{q.advan
 }
 #[test]fn removed_equipment_does_not_leave_queued_notifications(){
  let mut list=List::default();let r=*generated::RECIPES.iter().find(|r|r.level==0).unwrap();list.insert(0,r).unwrap();let mut queue=notifications::Queue::default();queue.push(r);queue.retain_registered(&list);assert_eq!(queue.visible_count(),1);list.remove_completed(r.kind,r.id,0);queue.retain_registered(&list);assert!(queue.is_empty());
+}
+#[test]fn equipment_icons_match_native_rarity_instead_of_a_shared_blue_tint(){
+ let braces=Recipe{kind:3,id:3,..Recipe::default()};
+ assert_eq!(equipment::get(braces).unwrap().rarity,1);assert_eq!(equipment::icon_tint(braces),0xffe6e6e6);
+ let breaker=Recipe{kind:9,id:51,level:4,..Recipe::default()};
+ assert_eq!(equipment::get(breaker).unwrap().rarity,2);assert_eq!(equipment::icon_tint(breaker),0xfff292b0);
+ for kind in [1,2,3,4,5,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24]{
+  let r=Recipe{kind,id:1,..Recipe::default()};if let Some(d)=equipment::get(r){assert_eq!(equipment::icon_tint(r),presentation::rarity(d.rarity));}
+ }
 }

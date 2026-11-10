@@ -7,17 +7,25 @@ from pathlib import Path
 import re,subprocess,json,struct,ast
 from PIL import Image,ImageDraw,ImageFont,ImageChops
 from fontTools.ttLib import TTFont
+from fontTools.pens.boundsPen import BoundsPen
 
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'target/ui-steel-proof';OUT.mkdir(parents=True,exist_ok=True)
 font=TTFont(ROOT/'assets/NotoSansCJKkr-Regular.otf');cmap=font.getBestCmap();denom=font['hhea'].ascent-font['hhea'].descent
 (OUT/'advances.bin').write_bytes(b''.join(struct.pack('<f',font['hmtx'][cmap[c]][0]/denom if c in cmap else .5) for c in range(65536)))
+glyphs=font.getGlyphSet();bounds={};horizontal={}
+for name in set(cmap.values()):
+ pen=BoundsPen(glyphs);glyphs[name].draw(pen)
+ bounds[name]=(0.,0.) if pen.bounds is None else ((font['hhea'].ascent-pen.bounds[3])/denom,(font['hhea'].ascent-pen.bounds[1])/denom)
+ horizontal[name]=(0.,0.) if pen.bounds is None else (pen.bounds[0]/denom,pen.bounds[2]/denom)
+(OUT/'bounds.bin').write_bytes(b''.join(struct.pack('<2f',*bounds.get(cmap.get(c),(0.,0.))) for c in range(65536)))
+(OUT/'horizontal.bin').write_bytes(b''.join(struct.pack('<2f',*horizontal.get(cmap.get(c),(0.,0.))) for c in range(65536)))
 source=(ROOT/'src/ui.rs').read_text(encoding='utf-8')
 canvas=source[source.index('static mut FONT'):source.index('fn save(')]
 draw=source[source.index('fn materials('):source.index('pub fn render()')]
 render=source[source.index('pub fn render()'):source.index('pub fn menu()')]
 render='pub fn render(){let cv=Canvas::new().unwrap();STATE.with(|s|{'+render.split(' STATE.with(|s|{',1)[1]
-modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['model','generated','locales','equipment','interaction','navigation','presentation','text_blob','notifications'])
+modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','notifications'])
 stub=r'''
 
 extern crate alloc;extern crate self as forge;
@@ -28,14 +36,15 @@ use sys::imgui::{ImVec2,ImDrawFlags};
 pub mod sys{pub mod imgui{
  #[derive(Clone,Copy,Debug)]pub struct ImVec2{pub x:f32,pub y:f32}
  pub enum ImDrawFlags{None,Closed}
- pub struct Baked;pub struct Glyph{pub Y0:f32,pub Y1:f32}
- pub unsafe fn ImFont_GetFontBaked(_: *mut u8,_:f32,_:f32)->*mut Baked{std::ptr::null_mut()}
- pub unsafe fn ImFontBaked_FindGlyph(_: *mut Baked,_:u16)->*mut Glyph{std::ptr::null_mut()}
+ pub struct Baked{size:f32}pub struct Glyph{pub AdvanceX:f32,pub X0:f32,pub X1:f32,pub Y0:f32,pub Y1:f32}
+ static BOUNDS:&[u8]=include_bytes!("bounds.bin");static HORIZONTAL:&[u8]=include_bytes!("horizontal.bin");static ADV:&[u8]=include_bytes!("advances.bin");static mut BAKED:Baked=Baked{size:0.};static mut GLYPH:Glyph=Glyph{AdvanceX:0.,X0:0.,X1:0.,Y0:0.,Y1:0.};
+ pub unsafe fn ImFont_GetFontBaked(_: *mut u8,size:f32,_:f32)->*mut Baked{unsafe{BAKED.size=size};&raw mut BAKED}
+ pub unsafe fn ImFontBaked_FindGlyph(baked: *mut Baked,ch:u16)->*mut Glyph{let at=ch as usize*8;let adv=ch as usize*4;unsafe{GLYPH.AdvanceX=f32::from_le_bytes(ADV[adv..adv+4].try_into().unwrap())*(*baked).size;GLYPH.X0=f32::from_le_bytes(HORIZONTAL[at..at+4].try_into().unwrap())*(*baked).size;GLYPH.X1=f32::from_le_bytes(HORIZONTAL[at+4..at+8].try_into().unwrap())*(*baked).size;GLYPH.Y0=f32::from_le_bytes(BOUNDS[at..at+4].try_into().unwrap())*(*baked).size;GLYPH.Y1=f32::from_le_bytes(BOUNDS[at+4..at+8].try_into().unwrap())*(*baked).size;} &raw mut GLYPH}
 }}
 pub mod imgui{
  use super::*;static ADV:&[u8]=include_bytes!("advances.bin");thread_local!{static SIZE:RefCell<f32>=const{RefCell::new(25.)};}
  #[derive(Clone,Copy)]pub struct ImFont;impl ImFont{pub fn raw(&self)->*mut u8{std::ptr::null_mut()}pub fn load(_: &std::ffi::CStr)->Option<Self>{Some(Self)}}
- pub fn push_font(_: &ImFont,s:Option<f32>){SIZE.with(|v|*v.borrow_mut()=s.unwrap_or(25.))}pub fn pop_font(){}
+ pub fn push_font(_: &ImFont,s:Option<f32>){let dpi=std::env::var("PROOF_HOST_FONT_SCALE").ok().and_then(|v|v.parse::<f32>().ok()).unwrap_or(1.);SIZE.with(|v|*v.borrow_mut()=s.unwrap_or(25.)*dpi)}pub fn pop_font(){}
  pub fn calc_text_size(t:&str,_:bool,_:f32)->ImVec2{let s=SIZE.with(|v|*v.borrow());ImVec2{x:t.chars().map(|c|{let at=c as usize*4;if at+4<=ADV.len(){f32::from_le_bytes(ADV[at..at+4].try_into().unwrap())*s}else{s*0.5}}).sum(),y:s}}
  pub struct Io{pub DisplaySize:ImVec2,pub DeltaTime:f32}pub fn get_io()->Io{Io{DisplaySize:ImVec2{x:1280.,y:720.},DeltaTime:0.016}}
  #[derive(Clone,Copy)]pub struct DrawList;
@@ -77,8 +86,12 @@ fn main(){
  let mut stock=[99;4096];stock[r.materials[0].id as usize]=0;
  let frozen=g::RECIPES.iter().find(|r|r.kind==7).copied();
  let mut s=State{installed:true,loaded:true,game_ready:true,base:0,mode:2,list,stock,stock_ready:true,aggregate:Default::default(),selected:0,focus:Default::default(),preview:false,preview_panel:0,preview_clock:0.,frozen,detail_page:0,tab:0,status:0,notices:notifications::Queue::default(),notice_demo:None,notice_test_case:2};
- match screen{"register"=>{s.mode=1;s.selected=7},"register-filled"=>s.mode=1,"materials"=>s.tab=1,"inspect"=>s.focus.material=true,"skills"=>s.detail_page=1,"confirm"=>s.mode=4,"quick-remove"=>s.mode=8,"notice"=>{s.mode=0;s.notices.push(r);},"notice-test"=>start_notice_demo(&mut s),"weapon"=>s.selected=2,"category"=>{if let Some(r)=g::RECIPES.iter().find(|r|r.group>0){s.list.slots[0]=Some(model::Entry{recipe:*r,ready:None})}},_=>()}
- STORE.with(|v|*v.borrow_mut()=Some(s));unsafe{FONT=Some(imgui::ImFont)}render();
+ match screen{"register"=>{s.mode=1;s.selected=7},"register-filled"=>s.mode=1,"materials"=>s.tab=1,"inspect"=>s.focus.material=true,"skills"=>s.detail_page=1,"confirm"=>s.mode=4,"done"=>s.mode=5,"overwrite"=>s.mode=3,"quick-remove"=>s.mode=8,"notice"=>{s.mode=0;s.notices.push(r);},"notice-test"=>start_notice_demo(&mut s),"weapon"=>s.selected=2,"category"=>{if let Some(r)=g::RECIPES.iter().find(|r|r.group>0){s.list.slots[0]=Some(model::Entry{recipe:*r,ready:None})}},_=>()}
+ if screen=="materials-long"{let r=*g::RECIPES.iter().find(|r|r.kind==9&&r.id==51&&r.materials.iter().any(|m|g::ITEMDATA.get(m.id as usize*2).is_some_and(|v|v[0]=="Gore Magala Feeler+"))).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});s.stock.fill(0);s.tab=1;}
+ if screen=="braces"{let r=*g::RECIPES.iter().find(|r|r.kind==3&&r.id==3&&r.level==0).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
+ STORE.with(|v|*v.borrow_mut()=Some(s));unsafe{FONT=Some(imgui::ImFont)}
+ if screen=="prompts"{let cv=Canvas::new().unwrap();cv.bar(1102.,528.,160.,icons::R3,l::QUICK_REMOVE[lang]);cv.bar(1102.,564.,160.,icons::R3,l::REGISTER[lang]);return}
+ render();
 }
 '''
 (OUT/'capture.rs').write_text(modules+'\n'+stub+'\n'+canvas+'\n'+draw+'\n'+render,encoding='utf-8')
@@ -121,22 +134,106 @@ def paint(commands):
    x,y,x2,y2=clips[-1];mask=Image.new('L',im.size);ImageDraw.Draw(mask).rectangle((x,y,x2,y2),fill=255);layer.putalpha(ImageChops.multiply(layer.getchannel('A'),mask))
   im.alpha_composite(layer)
  return im.convert('RGB')
-screens=['register','register-filled','list','materials','inspect','skills','confirm','notice','notice-test','weapon','category','quick-remove']
+screens=['register','register-filled','list','braces','materials','materials-long','prompts','inspect','skills','confirm','done','overwrite','notice','notice-test','weapon','category','quick-remove']
 for screen in screens:
  raw=subprocess.check_output([str(OUT/'capture.exe'),screen,'4'],text=True,encoding='utf-8');commands=[json.loads(s) for s in raw.splitlines()]
  (OUT/(screen+'.json')).write_text(json.dumps(commands,ensure_ascii=False),encoding='utf-8');paint(commands).save(OUT/(screen+'.png'))
  print(screen,len(commands),'draw commands')
 print('Offline draw proofs:',OUT)
+for screen in ['register','confirm','done','overwrite','notice','list','braces','materials-long','prompts']:
+ raw=subprocess.check_output([str(OUT/'capture.exe'),screen,'0'],text=True,encoding='utf-8')
+ commands=[json.loads(s) for s in raw.splitlines()]
+ (OUT/(screen+'.en.json')).write_text(json.dumps(commands),encoding='utf-8');paint(commands).save(OUT/(screen+'.en.png'))
 adv=struct.unpack('<65536f',(OUT/'advances.bin').read_bytes());problems=[]
+locale_source=(ROOT/'src/locales.rs').read_text(encoding='utf-8')
+tab_labels=[json.loads(re.search(r'pub const '+key+r':Label=(\[.*?\]);',locale_source).group(1)) for key in ['LIST','TOTAL']]
+def label(key):return json.loads(re.search(r'pub const '+key+r':Label=(\[.*?\]);',locale_source).group(1))
+labels={key:label(key) for key in ['REGISTER_ACTION','NO_EQUIPMENT','DONE','CLOSE','YES','NO','NOTICE','TITLE','DELETE_QUESTION','REPLACE_QUESTION']}
+def ink_box(x,y,size,text):
+ pen=0.;left=float('inf');right=float('-inf');top=float('inf');bottom=float('-inf')
+ for ch in text:
+  key=cmap.get(ord(ch));by=bounds.get(key,(0.,0.));bx=horizontal.get(key,(0.,0.))
+  if by[1]>by[0]:left=min(left,x+(pen+bx[0])*size);right=max(right,x+(pen+bx[1])*size);top=min(top,y+by[0]*size);bottom=max(bottom,y+by[1]*size)
+  pen+=adv[ord(ch)] if ord(ch)<65536 else .5
+ return (left,top,right,bottom) if left<=right else (x,y,x+pen*size,y+size)
+centred=0;long_checked=False;prompt_checked=False;modal_checks=0;notice_checks=0;pager_checks=0;colour_checks=0
 for lang in range(9):
  for screen in screens:
   raw=subprocess.check_output([str(OUT/'capture.exe'),screen,str(lang)],text=True,encoding='utf-8');clips=[]
-  for command in map(json.loads,raw.splitlines()):
+  commands=list(map(json.loads,raw.splitlines()))
+  for command in commands:
    typ,*a=command
    if typ=='clip':clips.append(a)
    elif typ=='unclip':clips.pop()
    elif typ=='text':
     x,y,size,c,text=a;width=sum(adv[ord(ch)] if ord(ch)<65536 else .5 for ch in text)*size
     if clips and x+width>clips[-1][2]+2:problems.append({'screen':screen,'language':lang,'text':text,'excess':round(x+width-clips[-1][2],2)})
+    ink=[bounds[cmap[ord(ch)]] for ch in text if ord(ch) in cmap and not ch.isspace() and bounds[cmap[ord(ch)]][1]>bounds[cmap[ord(ch)]][0]]
+    box=ink_box(x,y,size,text);ink_center=(box[1]+box[3])*.5;ink_x=(box[0]+box[2])*.5
+    for tab,expected_x in [(0,355.5),(1,710.)]:
+     if text==tab_labels[tab][lang] and 120<y<160:
+      assert abs(ink_x-expected_x)<.6,(screen,lang,text,'horizontal centre')
+      assert abs(ink_center-142.5)<.6,(screen,lang,text,'vertical centre')
+      centred+=1
+    if screen=='materials-long' and lang==0 and x==188 and text=='Gore Magala Feeler+':
+     assert abs((ink_center-215)/35-round((ink_center-215)/35))<.01,'Long material left its row centre'
+     centred+=1;long_checked=True
+    if screen=='prompts' and lang==0 and text=='Remove':
+     assert size>=23 and abs(ink_center-542)<.6,'Removal prompt is small or not centred'
+     centred+=1;prompt_checked=True
+    if screen=='register' and text==labels['REGISTER_ACTION'][lang]:
+     assert abs(ink_x-714)<.6,(lang,'registration action')
+     icon=next(a for typ,*a in commands if typ=='icon' and a[0]==107 and a[2]==362.)
+     assert abs(icon[1]+icon[3]*.5-ink_x)<.6,(lang,'A icon')
+     modal_checks+=1
+    if screen=='register' and text==labels['NO_EQUIPMENT'][lang]:
+     assert abs(ink_x-1117)<.6 and abs(ink_center-344.5)<.6,(lang,'empty equipment')
+     modal_checks+=1
+    if screen in ['confirm','overwrite','done','quick-remove']:
+     question=labels['DONE'][lang] if screen=='done' else labels['REPLACE_QUESTION'][lang] if screen=='overwrite' else labels['DELETE_QUESTION'][lang]
+     if text in question.splitlines():assert abs(ink_x-640)<.6,(lang,screen,'question');modal_checks+=1
+     for key,expected_x in [('YES',536),('NO',744),('CLOSE',640)]:
+      if text==labels[key][lang]:assert abs(ink_x-expected_x)<.6,(lang,screen,key);modal_checks+=1
+    if screen=='notice' and text==labels['NOTICE'][lang]:
+     toast=next(a for typ,*a in commands if typ=='rect' and abs(a[3]-a[1]-80)<.1 and a[4]==0xe0282620)
+     assert abs(ink_x-(toast[0]+toast[2])*.5)<.6,(lang,'notification centre')
+     title=next(a for typ,*a in commands if typ=='text' and a[4].startswith(labels['TITLE'][lang]+' \"'))
+     title_width=sum(adv[ord(ch)] for ch in title[4])*title[2]
+     expected=min(max(title_width+40,width),876)+32
+     assert abs(toast[2]-toast[0]-expected)<1,(lang,'excess notification padding')
+     notice_checks+=1
+    if re.fullmatch(r'◀ \d+ / \d+ ▶',text):
+     top=580. if ink_center>550 else 484.;expected=306. if top==580. else 336.
+     left=next(a for typ,*a in commands if typ=='icon' and a[0]==118 and a[2]==top)
+     right=next(a for typ,*a in commands if typ=='icon' and a[0]==115 and a[2]==top)
+     assert abs(ink_x-expected)<.6 and abs(ink_center-top-12.5)<.6,(lang,screen,'page centre')
+     assert abs((box[0]-left[1]-left[3])-(right[1]-box[2]))<1,(lang,screen,'page icon gaps')
+     pager_checks+=1
+  if screen=='braces':
+   gear=[a for typ,*a in commands if typ=='icon' and a[0]==73 and a[3] in (24.,27.)]
+   assert len(gear)==2 and all(a[5]==0xffe6e6e6 for a in gear),(lang,'Bherna Braces icon colour')
+   colour_checks+=len(gear)
 (OUT/'text-audit.json').write_text(json.dumps({'screens':len(screens)*9,'width_overflows':problems},ensure_ascii=False,indent=2),encoding='utf-8')
 print('Nine-language text audit:',len(problems),'width overflows')
+assert not problems,problems
+assert centred>=100,centred
+assert long_checked and prompt_checked,'Required regression fixtures were not rendered'
+print('Alignment audit:',centred,'tab, material and prompt checks passed')
+
+assert modal_checks>=100 and notice_checks==18,(modal_checks,notice_checks)
+print('Dialog/empty-slot/notification audit:',modal_checks+notice_checks,'checks passed')
+# Reproduce Recomp's additional host font scale, which caused the live-only drift.
+import os
+probes=0
+for lang in range(9):
+ for screen in ['register','confirm','overwrite','done','notice','notice-test']:
+  baseline=subprocess.check_output([str(OUT/'capture.exe'),screen,str(lang)])
+  for factor in ['1.25','1.5','2.0']:
+   environment=os.environ.copy();environment['PROOF_HOST_FONT_SCALE']=factor
+   scaled=subprocess.check_output([str(OUT/'capture.exe'),screen,str(lang)],env=environment)
+   assert baseline==scaled,(screen,lang,factor,'host font scale changed overlay layout')
+   probes+=1
+print('Host font scale audit:',probes,'comparisons passed')
+
+assert pager_checks>=100 and colour_checks==18,(pager_checks,colour_checks)
+print('Pager spacing / native icon colour audit:',pager_checks+colour_checks,'checks passed')

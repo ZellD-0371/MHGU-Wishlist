@@ -30,7 +30,7 @@ A Forge mod that adds a wishlist to the Smithy in Monster Hunter Generations Ult
 ## Installation
 
 1. Close the game.
-2. Extract `Wishlist_v1.0.0.zip`.
+2. Extract `Wishlist_vX.X.X.zip`.
 3. Place the extracted `Wishlist` folder in the `mods` folder next to the Recomp executable.
 4. Launch the game. If the mod has been disabled in the mod manager, enable it.
 
@@ -43,6 +43,7 @@ mods/
             ├─ wishlist.nro
             └─ wishlist/
                ├─ ui-text.bin
+               ├─ ui-names.bin
                ├─ wishlist-atlas.rgba
                └─ NotoSansCJKkr-Regular.otf
 ```

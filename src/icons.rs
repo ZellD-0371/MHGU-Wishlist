@@ -1,7 +1,6 @@
 use forge::{imgui::DrawList,sys::imgui::{self as sys,ImVec2,ImTextureRef}};
 use core::sync::atomic::{AtomicUsize,Ordering};
 include!("icons_generated.rs");
-include!("item_text_generated.rs");
 pub const A:usize=107;pub const B:usize=108;pub const X:usize=109;pub const Y:usize=110;pub const L3:usize=111;pub const R3:usize=112;pub const ZL:usize=113;pub const ZR:usize=114;pub const DPAD:usize=115;pub const DPAD_LEFT:usize=118;pub const L:usize=116;pub const R:usize=117;
 static LAYOUT:AtomicUsize=AtomicUsize::new(0);
 pub fn set_layout(layout:usize){LAYOUT.store(layout.min(2),Ordering::Relaxed);}

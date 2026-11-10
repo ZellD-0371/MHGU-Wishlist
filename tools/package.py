@@ -1,4 +1,4 @@
-"""Package the standalone Forge overlay. Does not install or edit existing mods."""
+"""Package only the romfs tree. Does not install or edit existing mods."""
 import pathlib,shutil,zipfile,hashlib,json,tomllib
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 OUT=ROOT/'dist/Wishlist'
@@ -7,21 +7,27 @@ ARCHIVE=ROOT/f'Wishlist_v{VERSION}.zip'
 files={
  'romfs/nativeNX/plugins/wishlist.nro':ROOT/'wishlist.nro',
  'romfs/nativeNX/plugins/wishlist/ui-text.bin':ROOT/'assets/ui-text.bin',
+ 'romfs/nativeNX/plugins/wishlist/ui-names.bin':ROOT/'assets/ui-names.bin',
  'romfs/nativeNX/plugins/wishlist/wishlist-atlas.rgba':ROOT/'assets/wishlist-atlas.rgba',
  'romfs/nativeNX/plugins/wishlist/NotoSansCJKkr-Regular.otf':ROOT/'assets/NotoSansCJKkr-Regular.otf',
- 'NOTO_LICENSE.txt':ROOT/'assets/NOTO_LICENSE.txt',
- 'LICENSE':ROOT/'LICENSE',
- 'README.md':ROOT/'README.md',
- 'README_KO.md':ROOT/'README_KO.md',
- 'VALIDATION.md':ROOT/'VALIDATION.md',
- 'docs/crash-v0.2.1.md':ROOT/'docs/crash-v0.2.1.md',
- 'tools/fix_recomp_imgui.py':ROOT/'tools/fix_recomp_imgui.py',
- 'docs/forge_imgui_cursor.patch':ROOT/'docs/forge_imgui_cursor.patch',
+ 'romfs/nativeNX/plugins/wishlist/NOTO_LICENSE.txt':ROOT/'assets/NOTO_LICENSE.txt',
+ 'romfs/nativeNX/plugins/wishlist/LICENSE.txt':ROOT/'LICENSE',
 }
 # Match the runtime's actual pre-load check, including BSS and next-module alignment.
 import struct
 nro=(ROOT/'wishlist.nro').read_bytes();required=len(nro)+struct.unpack_from('<I',nro,0x38)[0]+0x10000
 assert required<=0xC00000,f'NRO exceeds Recomp plugin region: {required} > 12582912'
+assert required<=0x300000,f'NRO exceeds 3 MiB compatibility budget: {required}'
+assert all(source.is_file() for source in files.values()),'Missing package input'
+# Remove metadata left by older packages, within this generated output only.
+assert OUT.resolve()==ROOT.resolve()/'dist'/'Wishlist','Unexpected package output path'
+if OUT.exists():
+ for child in OUT.iterdir():
+  if child.name=='romfs':continue
+  if child.is_symlink():child.unlink();continue
+  assert child.resolve().parent==OUT.resolve(),'Cleanup target outside package output'
+  if child.is_dir():shutil.rmtree(child)
+  else:child.unlink()
 manifest={}
 for name,source in files.items():
  dest=OUT/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,dest)

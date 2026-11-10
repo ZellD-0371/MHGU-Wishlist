@@ -1,5 +1,7 @@
 #![no_std]
 extern crate alloc;
+mod name_data;
+mod hook_guard;
 mod model;mod generated;mod locales;mod native;mod controller;mod storage;mod ui;mod smithy;mod equipment;mod navigation;mod sound;mod icons;mod interaction;mod session;mod profiles;mod text_blob;mod text_data;mod presentation;mod game_menu;mod sound_cues;mod notifications;mod badge_model;mod native_badges;mod completed;
 use core::{cell::UnsafeCell,sync::atomic::{AtomicBool,Ordering},ffi::c_void};
 use model::{List,Recipe};

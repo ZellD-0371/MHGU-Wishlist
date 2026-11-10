@@ -5,6 +5,8 @@ $taskOldPath = $env:PATH
 $taskOldOffline = $env:CARGO_NET_OFFLINE
 $taskOldLinker = $env:CARGO_TARGET_ARMV7A_NONE_EABI_LINKER
 try {
+    & python './tools/prepare_names.py'
+    if ($LASTEXITCODE -ne 0) { throw 'Name resource generation failed' }
     if ($Offline) { $env:CARGO_NET_OFFLINE = 'true' }
     $taskArmRoot = $env:DEVKITARM
     if (-not $taskArmRoot -and $env:DEVKITPRO) { $taskArmRoot = Join-Path $env:DEVKITPRO 'devkitARM' }

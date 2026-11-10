@@ -9,9 +9,8 @@
 /shots/
 /cache/
 /design/previews/
-/README_DRAFT_KO.md
 /Run-Test.cmd
-/docs
+/docs/
 *.log
 *.dmp
 *.stackdump
