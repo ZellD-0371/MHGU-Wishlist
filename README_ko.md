@@ -62,7 +62,7 @@ Insert로 Forge 설정을 열고 `Plugin UI > Wishlist`에서 변경합니다.
 | Language | 지원 언어 9개 중 선택 |
 | UI scale | 50 / 60 / 70 / 80 / 90 / 100% |
 
-지원 언어: `en`, `zh-Hans`, `zh-Hant`, `ja`, `ko`, `de`, `fr`, `it`, `es`.
+지원 언어: English, 简体中文, 繁體中文, 日本語, 한국어, Deutsch, Français, Italiano, Español
 
 ## 저장 데이터
 
