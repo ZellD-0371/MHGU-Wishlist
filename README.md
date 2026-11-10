@@ -1,3 +1,13 @@
+<p align="center">
+  <strong>English</strong> | <a href="README_ko.md">한국어</a>
+</p>
+
+<h3 align="center">Screenshots</h3>
+
+<p align="center">
+  <a href="docs/screenshots.md">View screenshots</a>
+</p>
+
 # MHGU Wishlist v1.0.0
 
 A Forge mod that adds a wishlist to the Smithy in Monster Hunter Generations Ultimate. Register equipment you want to forge or upgrade, then track the required materials and how many you own. The mod notifies you when all required materials are available and automatically removes the corresponding entry once forging or upgrading is complete.
