@@ -72,7 +72,7 @@ Press Insert to open the Forge settings, then go to `Plugin UI > Wishlist`.
 | Language | Choose from nine supported languages |
 | UI scale | 50 / 60 / 70 / 80 / 90 / 100% |
 
-Supported languages: `en`, `zh-Hans`, `zh-Hant`, `ja`, `ko`, `de`, `fr`, `it`, `es`.
+Supported languages: English, 简体中文, 繁體中文, 日本語, 한국어, Deutsch, Français, Italiano, Español
 
 ## Save Data
 
