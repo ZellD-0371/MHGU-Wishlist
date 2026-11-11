@@ -10,11 +10,13 @@ pub fn capturing()->bool{CAPTURE.load(Ordering::Relaxed)}
 pub fn capture(on:bool){if on{for c in &CAPTURED{c.store(u32::MAX,Ordering::Relaxed)}}CAPTURE.store(on,Ordering::Release);}
 pub fn captured()->Vec<u32>{CAPTURED.iter().map(|c|c.load(Ordering::Relaxed)).filter(|c|*c!=u32::MAX).collect()}
 pub fn request_open(_id:u32){cue(Cue::Open);}
+#[cfg(feature="debug-ui")]
 #[forge::hook(offset=0x4eeb78)]
 fn play_ui(owner:u32,id:u32)->u32{
  if capturing(){for c in &CAPTURED{let current=c.load(Ordering::Relaxed);if current==id{break}if current==u32::MAX{c.store(id,Ordering::Relaxed);forge::log::prelude::info!("[wishlist-sound] captured SE {}",id);break}}}
  original!(owner,id)
 }
+#[cfg(feature="debug-ui")]
 pub fn install(base:u32){if unsafe{ptr::read_unaligned((base+0x4eeb78) as *const u32)}==0xe1a02000{forge::install_hook!(base,play_ui);}}
 pub fn update(base:u32){
  let id=PENDING.swap(u32::MAX,Ordering::AcqRel);if capturing()||id==u32::MAX{return}

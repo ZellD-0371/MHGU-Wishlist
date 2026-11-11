@@ -34,6 +34,7 @@ fn main(){
  if !native::install(base){error!("[wishlist] MHGU global 1.4.0 signatures rejected; disabled");return}
  if !native_badges::install(base){error!("[wishlist] native icon signatures rejected; badges disabled");}
  if !completed::install(base){error!("[wishlist] production completion signatures rejected; auto removal disabled");}
+ #[cfg(feature="debug-ui")]
  sound::install(base);
  if !game_menu::install(base){error!("[wishlist] native + menu check failed; controller list shortcut disabled");}
  if !session::install(base){error!("[wishlist] character session signatures rejected");return}
