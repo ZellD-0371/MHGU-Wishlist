@@ -16,3 +16,14 @@ pub fn viewport(width:f32,height:f32,percent:u16)->Option<Viewport>{
  let scale=(width/1280.).min(height/720.)*percent.clamp(50,100) as f32/100.;
  Some(Viewport{scale,ox:(width-1280.*scale)*0.5,oy:(height-720.*scale)*0.5})
 }
+/// The game's own menus (smithy lists, equipment box) as the PC recomp places them. On a
+/// picture narrower than 16:9 (16:10) it does not letterbox the 16:9 HUD: the canvas spans the
+/// full width and its menu windows stay anchored to the top edge, so their native canvas
+/// coordinates map with the width's scale and no vertical centring. The picture itself is never
+/// narrower than 16:10 and sits centred in a taller window. 16:9 and wider: as `viewport`.
+pub fn native_viewport(width:f32,height:f32)->Option<Viewport>{
+ let view=viewport(width,height,100)?;
+ if width/height>=16./9.-0.01{return Some(view)}
+ let picture_h=height.min(width/1.6);
+ Some(Viewport{scale:width/1280.,ox:0.,oy:(height-picture_h)*0.5})
+}
