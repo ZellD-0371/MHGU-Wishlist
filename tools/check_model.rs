@@ -285,3 +285,18 @@ fn tick_queue(q:&mut notifications::Queue,count:usize){for _ in 0..count{q.advan
   let r=Recipe{kind,id:1,..Recipe::default()};if let Some(d)=equipment::get(r){assert_eq!(equipment::icon_tint(r),presentation::rarity(d.rarity));}
  }
 }
+#[path="../src/hud_layout.rs"]mod hud_layout;
+#[test]fn native_hud_picture_and_anchor_settings(){
+ use hud_layout::{Settings as S,right_top as map};
+ let p=map(2560.,1600.,S::default()).unwrap();assert_eq!((p.scale,p.ox,p.oy),(2.,0.,0.));
+ let p=map(2560.,1600.,S{aspect:16./9.,anchor:0}).unwrap();assert_eq!((p.scale,p.ox,p.oy),(2.,0.,80.));
+ let a=map(3440.,1440.,S::default()).unwrap();let b=map(3440.,1440.,S{aspect:0.,anchor:3}).unwrap();assert_eq!(b.scale,2.);assert_eq!(b.ox,880.);assert_eq!(a.ox,440.);
+ let p=map(1024.,768.,S::default()).unwrap();assert_eq!(p.scale,0.8);assert_eq!(p.oy,64.);
+ for(w,h)in[(1920.,1080.),(2560.,1600.),(3440.,1440.),(5120.,1440.),(1024.,768.)]{for anchor in 0..4{let p=map(w,h,S{aspect:0.,anchor}).unwrap();let right=p.ox+1280.*p.scale;assert!(right<=w+0.01&&right>0.);}}
+ assert!(map(0.,720.,S::default()).is_none());
+}
+#[test]fn native_hud_reads_only_display_config(){
+ let s=hud_layout::parse("[Other]\nUIAnchor=Edges\n[Display]\nAspectRatio=16:9\nUIAnchor=21:9 ; test\n");assert_eq!(s.aspect,16./9.);assert_eq!(s.anchor,1);
+ let s=hud_layout::parse("[Display]\nAspectRatio=Auto\nUIAnchor=Edges\n");assert_eq!(s.aspect,0.);assert_eq!(s.anchor,3);
+ let s=hud_layout::parse("[Display]\nAspectRatio=NaN\n");assert_eq!(s.aspect,0.);
+}

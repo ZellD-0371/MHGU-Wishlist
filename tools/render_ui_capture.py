@@ -25,7 +25,7 @@ canvas=source[source.index('static mut FONT'):source.index('fn save(')]
 draw=source[source.index('fn materials('):source.index('pub fn render()')]
 render=source[source.index('pub fn render()'):source.index('pub fn menu()')]
 render='pub fn render(){let cv=Canvas::new().unwrap();STATE.with(|s|{'+render.split(' STATE.with(|s|{',1)[1]
-modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','notifications'])
+modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications'])
 stub=r'''
 
 extern crate alloc;extern crate self as forge;
