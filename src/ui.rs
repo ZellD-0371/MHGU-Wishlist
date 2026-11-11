@@ -371,7 +371,7 @@ pub fn render(){
  STATE.with(|s|{
   if !s.installed||!s.loaded||!s.game_ready{return}crate::icons::set_layout(s.list.layout);let lang=s.list.language;
   if s.mode==0{
-   if let Some(view)=crate::presentation::viewport(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,100){let native_cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw};for marker in crate::native_badges::markers(&s.list,s.base){native_cv.pin(marker.x,marker.y);}}
+   if let Some(view)=crate::presentation::native_viewport(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y){let native_cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw};for marker in crate::native_badges::markers(&s.list,s.base){native_cv.pin(marker.x,marker.y);}}
    if s.at_smithy()||crate::game_menu::visible(s.base){cv.bar(1102.,496.,160.,crate::icons::L3,"");cv.plus(1131.,496.,14.,28.);cv.icon(crate::icons::R3,1144.,499.,22.,WHITE);cv.box_text(1172.,496.,83.,28.,24.,WHITE,l::TITLE[lang],false);}if let Some(r)=s.active(){cv.bar(1102.,528.,160.,crate::icons::R3,if s.list.registered(r).is_some(){l::QUICK_REMOVE[lang]}else{l::REGISTER[lang]});}
    for (slot,n) in s.notices.visible(){draw_notice(&cv,n.recipe,lang,crate::presentation::NOTICE_DURATION-n.seconds,slot);}
    s.notices.advance(imgui::get_io().DeltaTime);return
