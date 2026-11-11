@@ -52,13 +52,12 @@ mods/
 
 ### Opening the Wishlist
 
-At the Smithy, hold L3 and press R3 to open the wishlist. In villages and quest areas, the same shortcut is available while the in-game menu opened with the + button is displayed. On a keyboard, press the backtick key (to the left of the number 1 key) to open the wishlist after loading your character.
+At the Smithy, hold L3 and press R3 or backtick key (to the left of the number 1 key) to open the wishlist. In villages and quest areas, the same shortcut is available while the in-game menu opened with the + button is displayed. 
 
 | Input — Nintendo layout | Action |
 | --- | --- |
 | R3 / F5 at the Smithy | Register the selected equipment / removal of an existing entry |
-| L3 + R3 at the Smithy or in the in-game menu | Open the wishlist |
-| Backtick key ( ` ) | Open the wishlist |
+| L3 + R3 or  Backtick key ( ` ) at the Smithy or in the in-game menu | Open the wishlist |
 
 Changing the button layout changes the displayed icons. Actual controller bindings follow your Recomp settings. The wishlist cannot be opened on the title or character selection screen.
 
