@@ -57,7 +57,7 @@ fn equipment(owner:u32,equip:u32,compare:u32,a3:u32,a4:u32,flags:u32,a6:u32,a7:u
 #[forge::hook(offset=0x19a4ec)]
 fn load_box(owner:u32,stream:u32)->u32{
  crate::completed::clear();crate::native_badges::clear();
- STATE.with(|s|{s.cooldown=180;s.target=None;s.mode=0;s.notices.clear();for e in s.list.slots.iter_mut().flatten(){e.ready=None}});
+ STATE.with(|s|{s.cooldown=180;s.target=None;s.sort=None;s.mode=0;s.notices.clear();for e in s.list.slots.iter_mut().flatten(){e.ready=None}});
  original!(owner,stream)
 }
 pub fn install(base:u32)->bool{

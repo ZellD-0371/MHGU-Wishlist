@@ -56,8 +56,8 @@ At the Smithy, hold L3 and press R3 or backtick key (to the left of the number 1
 
 | Input — Nintendo layout | Action |
 | --- | --- |
-| R3 / F5 at the Smithy | Register the selected equipment / removal of an existing entry |
-| L3 + R3 or  Backtick key ( ` ) at the Smithy or in the in-game menu | Open the wishlist |
+| R3 | Register the selected equipment / removal of an existing entry |
+| L3 + R3 <!-- Or the backtick key (`), which is temporarily disabled. --> at the Smithy or in the in-game menu | Open the wishlist |
 
 Changing the button layout changes the displayed icons. Wishlist shortcuts can be customized independently under Key bindings; The wishlist cannot be opened on the title or character selection screen.
 

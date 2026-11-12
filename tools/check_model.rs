@@ -1,4 +1,5 @@
 #[path="../src/binding_model.rs"]mod binding_model;
+#[path="../src/sorting.rs"]mod sorting;
 #[path="../src/model.rs"]mod model;
 #[path="../src/generated.rs"]mod generated;
 #[path="../src/locales.rs"]mod locales;
@@ -340,5 +341,94 @@ fn tick_queue(q:&mut notifications::Queue,count:usize){for _ in 0..count{q.advan
  let mut guard=binding_model::KeyboardGuard::new();
  for (raw,keyboard,blocked) in [(32,true,true),(32,false,true),(0,false,true),(0,false,false),(32,false,false)]{
   assert_eq!(keyboard||guard.waiting(),blocked);guard.filter(raw,keyboard);
+ }
+}
+
+fn sort_recipe(id:u16,kind:u8,material:u16)->Recipe{Recipe{kind,id,materials:[Material{id:material,count:2},Material::default(),Material::default(),Material::default()],..Recipe::default()}}
+fn display_ids(list:&List)->Vec<u16>{list.slots.iter().flatten().map(|e|e.recipe.id).collect()}
+#[test]fn sort_keeps_material_priority_and_uses_category_only_inside_the_preferred_status(){
+ let mut l=List::default();for (i,r) in [sort_recipe(1,9,1),sort_recipe(2,2,2),sort_recipe(3,9,2),sort_recipe(4,2,1),sort_recipe(5,9,2)].into_iter().enumerate(){l.register(i,r,(i+1) as u32*100).unwrap();}
+ let mut stock=[0;4096];stock[2]=2;
+ l.sort_display(1,1,&stock,true,&[]).unwrap();assert_eq!(display_ids(&l),vec![3,5,2,1,4]);assert_eq!(l.costs[..5],[300,500,200,100,400]);
+ let saved=l.encode_character();let mut reload=List::decode(&saved).unwrap();assert_eq!(display_ids(&reload),vec![3,5,2,1,4]);
+ reload.sort_display(2,1,&stock,true,&[]).unwrap();assert_eq!(display_ids(&reload),vec![1,4,2,3,5]);
+ reload.sort_display(0,5,&stock,false,&[]).unwrap();assert_eq!(display_ids(&reload),vec![1,2,3,4,5]);assert_eq!(reload.costs[..5],[100,200,300,400,500]);
+}
+#[test]fn sorted_display_stays_frozen_as_stock_changes_and_shared_materials_are_not_reserved(){
+ let mut l=List::default();for (i,r) in [sort_recipe(1,2,1),sort_recipe(2,9,1),sort_recipe(3,2,2)].into_iter().enumerate(){l.register(i,r,0).unwrap();}
+ let mut stock=[0;4096];stock[1]=3;l.sort_display(1,1,&stock,true,&[]).unwrap();assert_eq!(display_ids(&l),vec![2,1,3]);
+ stock[1]=0;stock[2]=3;l.poll(&stock,&[]);assert_eq!(display_ids(&l),vec![2,1,3]);
+ let restored=List::decode(&l.encode_character()).unwrap();assert_eq!(display_ids(&restored),vec![2,1,3]);
+}
+#[test]fn removal_keeps_gaps_and_registration_and_overwrite_use_the_selected_slot(){
+ let mut l=List::default();for i in 0..3{l.register(i,sort_recipe(i as u16+1,9,1),100+i as u32).unwrap();}
+ l.remove_slot(1);assert_eq!(display_ids(&l),vec![1,3]);assert!(l.slots[1].is_none());assert_eq!(l.slots[2].unwrap().recipe.id,3);assert_eq!(l.registration[..3],[1,0,2]);
+ assert_eq!(l.register(1,sort_recipe(4,9,1),400).unwrap(),1);assert_eq!(display_ids(&l),vec![1,4,3]);
+ l.sort_display(0,0,&[0;4096],false,&[]).unwrap();assert_eq!(display_ids(&l),vec![1,3,4]);
+ assert_eq!(l.register(0,sort_recipe(5,2,1),500).unwrap(),0);assert_eq!(display_ids(&l),vec![5,3,4]);assert_eq!(l.registration[..3],[3,1,2]);assert_eq!(l.costs[..3],[500,102,400]);assert!(l.slots[3..].iter().all(Option::is_none));
+ assert!(l.register(1,sort_recipe(5,2,1),0).is_err());assert_eq!(display_ids(&l),vec![5,3,4]);
+}
+#[test]fn every_secondary_category_promotes_matching_material_status_only(){
+ for (category,kind) in [(1,21),(2,5),(3,25),(4,22),(5,24)]{
+  let mut l=List::default();l.register(0,sort_recipe(1,if category==1{2}else{9},1),0).unwrap();l.register(1,sort_recipe(2,kind,1),0).unwrap();
+  l.sort_display(2,category,&[0;4096],true,&[]).unwrap();assert_eq!(display_ids(&l),vec![2,1]);
+ }
+}
+#[test]fn sort_unknown_stock_and_invalid_options_do_not_change_list_and_category_points_count(){
+ let mut l=List::default();let mut r=sort_recipe(1,9,1);r.group=8;r.points=6;l.register(0,r,0).unwrap();l.register(1,sort_recipe(2,9,2),0).unwrap();let before=l.encode_character();
+ assert!(l.sort_display(1,0,&[0;4096],false,&[]).is_err());assert_eq!(l.encode_character(),before);
+ assert!(l.sort_display(3,0,&[0;4096],true,&[]).is_err());assert_eq!(l.encode_character(),before);
+ let mut stock=[0;4096];stock[1]=2;stock[2]=2;l.sort_display(1,0,&stock,true,&[(3,2,[8,0,0])]).unwrap();assert_eq!(display_ids(&l),vec![2,1]);
+ stock[3]=3;l.sort_display(1,0,&stock,true,&[(3,2,[8,0,0])]).unwrap();assert_eq!(display_ids(&l),vec![1,2]);
+}
+#[test]fn legacy_registration_order_migrates_and_invalid_rank_data_is_rejected(){
+ let mut l=List::default();l.insert(8,sort_recipe(1,9,1)).unwrap();l.insert(2,sort_recipe(2,9,1)).unwrap();
+ let legacy=l.encode_character().lines().filter(|line|!line.starts_with("registration")).collect::<Vec<_>>().join("\n");
+ let mut loaded=List::decode(&legacy).unwrap();loaded.compact();assert_eq!(display_ids(&loaded),vec![2,1]);loaded.sort_display(0,0,&[0;4096],false,&[]).unwrap();assert_eq!(display_ids(&loaded),vec![2,1]);
+ let mut text=l.encode_character();text=text.replace("registration8=1","registration8=2");assert!(List::decode(&text).is_err());
+}
+#[test]fn sort_dialog_is_two_stage_transaction_and_reopens_at_defaults(){
+ use sorting::{Dialog,Action};let mut d=Dialog::default();assert_eq!(d.input(0,true,false),Action::Apply);assert!(!d.secondary);
+ d.input(1,false,false);assert_eq!(d.input(0,true,false),Action::None);assert!(d.secondary);d.input(-1,false,false);assert_eq!(d.category,5);
+ assert_eq!(d.input(0,false,true),Action::None);assert!(!d.secondary);assert_eq!(d.category,0);assert_eq!(d.input(0,false,true),Action::Cancel);
+ let fresh=Dialog::default();assert_eq!((fresh.criterion,fresh.category,fresh.secondary),(0,0,false));
+}
+
+#[test]fn deleting_from_a_sorted_list_preserves_both_orders_and_reuses_bounded_ranks(){
+ let mut l=List::default();for i in 0..48{l.register(i,sort_recipe(i as u16+1,if i%2==0{2}else{9},1),i as u32).unwrap();}
+ l.sort_display(2,1,&[0;4096],true,&[]).unwrap();assert_eq!(l.slots[0].unwrap().recipe.id,2);
+ l.remove_slot(1);assert!(l.slots[1].is_none());assert_eq!(l.slots[2].unwrap().recipe.id,6);assert_eq!(l.slots[47].unwrap().recipe.id,47);
+ for id in 100..200{l.register(0,sort_recipe(id,9,1),id as u32).unwrap();assert_eq!(l.registration.iter().copied().max(),Some(47));}
+ let disk=List::decode(&l.encode_character()).unwrap();assert_eq!(display_ids(&disk),display_ids(&l));assert_eq!(disk.registration,l.registration);
+ l.sort_display(0,0,&[0;4096],false,&[]).unwrap();let ids=display_ids(&l);assert!(ids.windows(2).all(|pair|pair[0]<pair[1]));assert_eq!(ids.last(),Some(&199));
+}
+
+#[test]fn registration_keeps_selected_empty_or_occupied_slot_across_save_and_reload(){
+ let mut l=List::default();l.register(0,sort_recipe(1,9,1),100).unwrap();
+ assert_eq!(l.register(7,sort_recipe(2,25,1),200).unwrap(),7);assert!(l.slots[1..7].iter().all(Option::is_none));
+ let mut loaded=List::decode(&l.encode_character()).unwrap();assert!(loaded.slots[1..7].iter().all(Option::is_none));assert_eq!(loaded.slots[7].unwrap().recipe.id,2);assert_eq!(loaded.costs[7],200);
+ loaded.register(0,sort_recipe(3,2,1),300).unwrap();assert_eq!(loaded.slots[0].unwrap().recipe.id,3);assert_eq!(loaded.slots[7].unwrap().recipe.id,2);
+ loaded.sort_display(0,0,&[0;4096],false,&[]).unwrap();assert_eq!(display_ids(&loaded),vec![2,3]);assert_eq!(loaded.costs[..2],[200,300]);assert!(loaded.slots[2..].iter().all(Option::is_none));
+}
+#[test]fn no_missing_decorations_still_promotes_all_other_missing_equipment(){
+ let mut l=List::default();for (i,r) in [sort_recipe(1,2,1),sort_recipe(2,25,2),sort_recipe(3,9,2),sort_recipe(4,25,2),sort_recipe(5,22,1)].into_iter().enumerate(){l.register(i,r,0).unwrap();}
+ let mut stock=[0;4096];stock[2]=2;
+ l.sort_display(2,3,&stock,true,&[]).unwrap();assert_eq!(display_ids(&l),vec![1,5,2,3,4]);
+ l.sort_display(1,3,&stock,true,&[]).unwrap();assert_eq!(display_ids(&l),vec![2,4,3,1,5]);
+ l.sort_display(2,0,&stock,true,&[]).unwrap();assert_eq!(display_ids(&l),vec![1,5,2,3,4]);
+ l.register(5,sort_recipe(6,25,1),0).unwrap();l.sort_display(2,3,&stock,true,&[]).unwrap();assert_eq!(display_ids(&l),vec![6,1,5,2,3,4]);
+ // Once no entries have the preferred material state, category must not reorder them.
+ stock[1]=2;l.sort_display(2,3,&stock,true,&[]).unwrap();assert_eq!(display_ids(&l),vec![1,2,3,4,5,6]);
+ stock[1]=0;stock[2]=0;l.sort_display(1,3,&stock,true,&[]).unwrap();assert_eq!(display_ids(&l),vec![1,2,3,4,5,6]);
+}
+
+#[test]fn manual_and_completed_removals_preserve_slots_until_explicit_sort(){
+ for completed in [false,true]{
+  let mut list=List::default();for (slot,id) in [(0,1),(7,2),(8,3),(47,4)]{list.register(slot,sort_recipe(id,9,1),id as u32*100).unwrap();}
+  if completed{assert!(list.remove_completed(9,2,0));}else{list.remove_slot(7);}
+  assert!(list.slots[7].is_none());assert_eq!(list.costs[7],0);assert_eq!(list.registration[7],0);
+  assert_eq!(list.slots[8].unwrap().recipe.id,3);assert_eq!(list.costs[8],300);assert_eq!(list.slots[47].unwrap().recipe.id,4);assert_eq!(list.costs[47],400);
+  let mut loaded=List::decode(&list.encode_character()).unwrap();assert!(loaded.slots[7].is_none());assert_eq!(loaded.slots[8].unwrap().recipe.id,3);assert_eq!(loaded.slots[47].unwrap().recipe.id,4);
+  loaded.sort_display(0,0,&[0;4096],false,&[]).unwrap();assert_eq!(display_ids(&loaded),vec![1,3,4]);assert_eq!(loaded.costs[..3],[100,300,400]);assert!(loaded.slots[3..].iter().all(Option::is_none));
  }
 }

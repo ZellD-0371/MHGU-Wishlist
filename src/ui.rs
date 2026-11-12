@@ -9,6 +9,8 @@ const WHITE:u32=0xffebece9;const GOLD:u32=0xff75bbe9;const BLUE:u32=0xffd3c493;c
 const PANEL:u32=0xf4282620;const INSET:u32=0xee1d1a15;const RAISED:u32=0xff373229;const EDGE:u32=0xff807d70;const RULE:u32=0xff575347;
 // Noto's em includes substantial vertical space: 25 em pixels gives ~18px visible copy.
 const BODY:f32=25.;
+// Existing HD atlas art: equipment list, material container, decoration.
+const SORT_ORDER_ICON:usize=36;const SORT_STOCK_ICON:usize=23;const SORT_DECORATION_ICON:usize=44;
 pub(crate) fn push_binding_font()->bool{if let Some(f)=unsafe{FONT}{imgui::push_font(&f,Some(18.));true}else{false}}
 pub fn init(){crate::icons::init();crate::text_data::init();crate::name_data::init();unsafe{FONT=imgui::ImFont::load(c"app:/nativeNX/plugins/wishlist/NotoSansCJKkr-Regular.otf");}}
 fn table_name(table:u8,index:usize,lang:usize)->&'static str{crate::name_data::get(table,index,lang)}
@@ -187,16 +189,27 @@ fn save_preferences()->bool{
  }
 }
 fn commit(register:bool){
- let change=STATE.with(|s|{let mut next=s.list.clone();if register{let Some(r)=s.frozen else{return None};if next.insert(s.selected,r).is_err(){s.status=2;return None}
-   if s.stock_ready{if let Some(e)=next.slots[s.selected].as_mut(){e.ready=Some(r.ready(&s.stock,g::PROVISIONS));}}
-  }else{next.slots[s.selected]=None;next.costs[s.selected]=0}if register{next.costs[s.selected]=s.frozen_cost;}Some(next)});
- if let Some(next)=change{if save(next){STATE.with(|s|{s.status=1;s.mode=if register{5}else if s.mode==8{0}else{2};s.preview=false;});sound::cue(if register{Cue::Registered}else{Cue::Inspect});}}
+ let change=STATE.with(|s|{let mut next=s.list.clone();let selected;
+  if register{let Some(r)=s.frozen else{return None};let Ok(slot)=next.register(s.selected,r,s.frozen_cost)else{s.status=2;return None};selected=slot;if s.stock_ready{if let Some(e)=next.slots[slot].as_mut(){e.ready=Some(r.ready(&s.stock,g::PROVISIONS));}}}
+  else{next.remove_slot(s.selected);selected=s.selected;}Some((next,selected))});
+ if let Some((next,selected))=change{if save(next){STATE.with(|s|{s.selected=selected;s.status=1;s.mode=if register{5}else if s.mode==8{0}else{2};s.preview=false;});sound::cue(if register{Cue::Registered}else{Cue::Inspect});}}
+}
+fn apply_sort(){
+ let next=STATE.with(|s|{let dialog=s.sort.as_mut()?;let mut next=s.list.clone();if next.sort_display(dialog.criterion,dialog.category,&s.stock,s.stock_ready,g::PROVISIONS).is_err(){dialog.message=1;return None}Some(next)});
+ if let Some(next)=next{if save(next){STATE.with(|s|{s.sort=None;s.selected=0;s.focus=crate::interaction::Focus::default();s.detail_page=0;s.status=0;});sound::cue(Cue::Open);}else{STATE.with(|s|{if let Some(d)=s.sort.as_mut(){d.message=2;}});}}
 }
 fn events(events:u32){
  if events&c::OPEN_LIST!=0{STATE.with(|s|s.open(false));return}
  if events&c::OPEN_REGISTER!=0{STATE.with(|s|s.open(true));return}
  let action=STATE.with(|s|{
   if s.mode==0{return 0}
+  if let Some(d)=s.sort.as_mut(){
+   let was_secondary=d.secondary;let direction=if events&c::UP!=0{-1}else if events&c::DOWN!=0{1}else{0};
+   let result=d.input(direction,events&c::ACCEPT!=0,events&c::BACK!=0);
+   if events&c::BACK!=0{sound::cue(Cue::Close);}else if direction!=0{sound::cue(Cue::Cursor);}else if !was_secondary&&d.secondary{sound::cue(Cue::Inspect);}
+   match result{crate::sorting::Action::Cancel=>s.sort=None,crate::sorting::Action::Apply=>return 3,_=>{}}return 0
+  }
+  if s.mode==2&&s.tab==0&&!s.focus.material&&!s.preview&&events&c::SORT!=0{if s.list.slots.iter().any(Option::is_some){s.sort=Some(crate::sorting::Dialog::default());sound::cue(Cue::Inspect);}return 0}
   if s.mode==7{
    if events&c::BACK!=0{s.mode=0;s.notice_demo=None;sound::cue(Cue::Close);}
    else if let Some(demo)=s.notice_demo.as_mut(){
@@ -241,7 +254,7 @@ fn events(events:u32){
   if s.mode==2&&s.tab==0&&events&c::DELETE!=0&&s.list.slots[s.selected].is_some(){s.mode=4;s.focus.yes=false;sound::cue(Cue::Inspect);}
   if s.mode==1&&events&c::ACCEPT!=0{if s.list.slots[s.selected].is_some(){s.mode=3;s.focus.yes=false;sound::cue(Cue::Inspect);}else{return 1}}
   0
- });if action!=0{commit(action==1)}
+ });if action==3{apply_sort()}else if action!=0{commit(action==1)}
 }
 #[cfg(feature="keyboard-input")]
 fn keyboard()->u32{let mut e=0;for (key,event) in [(Key::Enter,c::ACCEPT),(Key::Escape,c::BACK),(Key::Up,c::UP),(Key::Down,c::DOWN),(Key::Left,c::PREV),(Key::Right,c::NEXT),(Key::PageUp,c::PREV),(Key::PageDown,c::NEXT),(Key::Delete,c::DELETE),(Key::Tab,c::TAB),(Key::Q,c::DETAIL),(Key::E,c::DETAIL)]{if Input::is_key_pressed(key){e|=event}}e}
@@ -380,6 +393,26 @@ fn confirmation(cv:&Canvas,s:&State){let lang=s.list.language;cv.draw.add_rect_f
  if s.mode==5{cv.selection(564.,424.,152.,39.,true,false);cv.box_text(564.,424.,152.,39.,26.,WHITE,l::CLOSE[lang],true);}
  else{for (yes,x,label) in [(true,460.,l::YES[lang]),(false,668.,l::NO[lang])]{cv.selection(x,424.,152.,39.,s.focus.yes==yes,false);cv.box_text(x,424.,152.,39.,26.,WHITE,label,true);}}
   }
+fn sort_dialog(cv:&Canvas,s:&State){
+ let Some(d)=s.sort else{return};let lang=s.list.language;
+ cv.draw.add_rect_filled(ImVec2{x:0.,y:0.},imgui::get_io().DisplaySize,if d.secondary{0xa0000000}else{0x70000000},0.);
+ let (x,w)=if d.secondary{(280.,720.)}else{(400.,480.)};cv.frame(x,170.,w,420.);cv.heading(x+18.,183.,w-36.,l::SORT[lang]);
+ let left=x+18.;let column=if d.secondary{326.}else{w-36.};cv.section(left,230.,column,l::SORT_PRIMARY[lang]);
+ for (i,text) in l::SORT_CRITERIA.iter().enumerate(){let y=275.+i as f32*62.;cv.selection(left,y,column,48.,d.criterion==i,false);let icon_x=left+10.;let icon_y=y+11.;
+  if i==0{cv.icon(SORT_ORDER_ICON,icon_x,icon_y,26.,GOLD);}else{
+   cv.icon(SORT_STOCK_ICON,icon_x,icon_y,26.,if i==1{GREEN}else{RED});
+   let (cx,cy)=(icon_x+20.,icon_y+20.);cv.rect(cx-5.,cy-5.,12.,12.,INSET);
+   if i==1{cv.line(cx-4.,cy,cx-1.,cy+4.,GREEN);cv.line(cx-1.,cy+4.,cx+6.,cy-4.,GREEN);}else{cv.line(cx-3.,cy-3.,cx+4.,cy+4.,RED);cv.line(cx-3.,cy+4.,cx+4.,cy-3.,RED);}
+  }cv.box_text(left+48.,y,column-58.,48.,BODY,WHITE,text[lang],false);}
+ if d.secondary{
+  // Only the right column is active; shade the complete previous-stage panel.
+  cv.rect(left,224.,column,245.,0x99000000);let right=x+382.;cv.section(right,230.,w-400.,l::SORT_SECONDARY[lang]);
+  for (i,text) in l::SORT_CATEGORIES.iter().enumerate(){let y=265.+i as f32*44.;cv.selection(right,y,w-400.,38.,d.category==i,false);let tile=match i{1=>crate::icons::equipment(7),2=>crate::icons::equipment(2),3=>SORT_DECORATION_ICON,4=>crate::icons::equipment(22),_=>crate::icons::equipment(24)};
+   if i==0{cv.sprite(crate::icons::SLOT_DASH,right+9.,y+16.,24.,7.,MUTED,false);}else{cv.icon(tile,right+8.,y+6.,26.,if i==3{GOLD}else{WHITE});}
+   cv.box_text(right+44.,y,w-454.,38.,24.,WHITE,text[lang],false);}
+ }
+ if d.message>0{cv.paragraph(x+18.,535.,w-36.,45.,21.,RED,if d.message==1{l::SORT_WAIT[lang]}else{l::SAVE_FAILED[lang]});}
+}
 pub fn render(){
  let menu=forge::graphics::Graphics::is_menu_visible();let capturing=crate::bindings::capturing();
  let pad_allowed=crate::bindings::pad_shortcuts_allowed();
@@ -431,8 +464,9 @@ pub fn render(){
   else{cv.paragraph(34.,640.,568.,61.,BODY,WHITE,status);}
   // Dedicated black prompt bars sit left of the game's native right-hand prompts.
   if registering{cv.bar(925.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(925.,676.,160.,crate::icons::B,l::BACK[lang]);}
-  else{if s.tab==0&&!s.focus.material{cv.bar(755.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(925.,642.,160.,crate::icons::X,l::DELETE[lang]);}cv.bar(755.,676.,160.,crate::icons::B,l::BACK[lang]);}
+  else{if s.tab==0&&!s.focus.material&&s.sort.is_none(){cv.bar(755.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(925.,642.,160.,crate::icons::X,l::DELETE[lang]);if s.mode==2&&s.list.slots.iter().any(Option::is_some){cv.bar(925.,676.,160.,crate::icons::Y,l::SORT[lang]);}}cv.bar(755.,676.,160.,crate::icons::B,l::BACK[lang]);}
   if matches!(s.mode,3|4|5){confirmation(&cv,s);}
+  if s.sort.is_some(){sort_dialog(&cv,s);cv.bar(755.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(755.,676.,160.,crate::icons::B,l::BACK[lang]);}
 
  });
 }

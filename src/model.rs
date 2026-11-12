@@ -23,15 +23,40 @@ impl Recipe{
 #[derive(Clone,Copy,Default)]
 pub struct Entry{pub recipe:Recipe,pub ready:Option<bool>}
 #[derive(Clone)]
-pub struct List{pub slots:[Option<Entry>;CAPACITY],pub language:usize,pub costs:[u32;CAPACITY],pub open_sound:u32,pub layout:usize,pub ui_scale:u16,pub pad_bindings:[u32;crate::binding_model::COUNT],pub key_bindings:[u32;crate::binding_model::COUNT]}
-impl Default for List{fn default()->Self{Self{slots:[None;CAPACITY],language:0,costs:[0;CAPACITY],open_sound:1,layout:0,ui_scale:100,pad_bindings:crate::binding_model::DEFAULT_PAD,key_bindings:crate::binding_model::DEFAULT_KEYS}}}
+pub struct List{pub registration:[u8;CAPACITY],pub slots:[Option<Entry>;CAPACITY],pub language:usize,pub costs:[u32;CAPACITY],pub open_sound:u32,pub layout:usize,pub ui_scale:u16,pub pad_bindings:[u32;crate::binding_model::COUNT],pub key_bindings:[u32;crate::binding_model::COUNT]}
+impl Default for List{fn default()->Self{Self{registration:[0;CAPACITY],slots:[None;CAPACITY],language:0,costs:[0;CAPACITY],open_sound:1,layout:0,ui_scale:100,pad_bindings:crate::binding_model::DEFAULT_PAD,key_bindings:crate::binding_model::DEFAULT_KEYS}}}
 impl List{
  pub fn copy_preferences(&mut self,settings:&Self){self.open_sound=settings.open_sound;self.pad_bindings=settings.pad_bindings;self.key_bindings=settings.key_bindings;self.language=settings.language;self.layout=settings.layout;self.ui_scale=settings.ui_scale;}
  pub fn reset_preferences(&mut self){self.copy_preferences(&Self::default());}
  pub fn insert(&mut self,slot:usize,recipe:Recipe)->Result<(),&'static str>{
   if slot>=CAPACITY||!recipe.valid(){return Err("invalid")}
   if self.slots.iter().enumerate().any(|(i,e)|i!=slot&&e.is_some_and(|e|e.recipe==recipe)){return Err("duplicate")}
+  self.slots[slot]=None;self.registration[slot]=0;self.normalize_registration();self.registration[slot]=self.slots.iter().enumerate().filter(|(i,e)|*i!=slot&&e.is_some()).count() as u8+1;
   self.slots[slot]=Some(Entry{recipe,ready:None});Ok(())
+ }
+ pub fn normalize_registration(&mut self){
+  let mut ids:Vec<usize>=(0..CAPACITY).filter(|i|self.slots[*i].is_some()).collect();ids.sort_by_key(|i|(self.registration[*i],*i));
+  self.registration.fill(0);for (rank,i) in ids.into_iter().enumerate(){self.registration[i]=(rank+1) as u8;}
+ }
+ pub fn compact(&mut self){
+  let mut write=0;for read in 0..CAPACITY{if self.slots[read].is_some(){if write!=read{self.slots[write]=self.slots[read].take();self.costs[write]=self.costs[read];self.registration[write]=self.registration[read];}write+=1;}}
+  for i in write..CAPACITY{self.slots[i]=None;self.costs[i]=0;self.registration[i]=0;}self.normalize_registration();
+ }
+ pub fn register(&mut self,slot:usize,recipe:Recipe,cost:u32)->Result<usize,&'static str>{
+  // Display placement is explicit; chronological order still treats replacement as new.
+  self.insert(slot,recipe)?;self.costs[slot]=cost;Ok(slot)
+ }
+ pub fn remove_slot(&mut self,slot:usize){if slot<CAPACITY{self.slots[slot]=None;self.costs[slot]=0;self.registration[slot]=0;self.normalize_registration();}}
+ pub fn sort_display(&mut self,criterion:usize,category:usize,stock:&[u32;4096],known:bool,provisions:&[(u16,u16,[u16;3])])->Result<(),&'static str>{
+  if criterion>2||category>5{return Err("invalid")}if criterion!=0&&!known{return Err("inventory")}
+  self.compact();let mut ids:Vec<usize>=(0..CAPACITY).filter(|i|self.slots[*i].is_some()).collect();
+  // Snapshot each readiness value once; never reserve shared materials across recipes.
+  let ready:[bool;CAPACITY]=core::array::from_fn(|i|criterion!=0&&self.slots[i].is_some_and(|e|e.recipe.ready(stock,provisions)));
+  // Material status always wins. Category preference applies only to that
+  // preferred status group; the opposite group stays in registration order.
+  ids.sort_by_key(|i|{let r=self.slots[*i].unwrap().recipe;let other_status=match criterion{1=>!ready[*i],2=>ready[*i],_=>false};let other_kind=criterion!=0&&!other_status&&category!=0&&!crate::sorting::preferred(r.kind,category);(other_status,other_kind,self.registration[*i])});
+  let before=self.clone();self.slots.fill(None);self.costs.fill(0);self.registration.fill(0);
+  for (at,i) in ids.into_iter().enumerate(){self.slots[at]=before.slots[i];self.costs[at]=before.costs[i];self.registration[at]=before.registration[i];}Ok(())
  }
  pub fn poll(&mut self,stock:&[u32;4096],provisions:&[(u16,u16,[u16;3])])->Vec<usize>{
   let mut events=Vec::new();for (i,e) in self.slots.iter_mut().enumerate(){if let Some(e)=e{
@@ -41,7 +66,7 @@ impl List{
  }
  pub fn totals(&self)->Vec<Material>{let mut out:Vec<Material>=Vec::new();for e in self.slots.iter().flatten(){for m in e.recipe.totals(){if let Some(v)=out.iter_mut().find(|v|v.id==m.id){v.count+=m.count}else{out.push(m)}}}out.sort_by_key(|m|m.id);out}
  pub fn ordered_totals(&self,stock:&[u32;4096],known:bool)->Vec<Material>{let mut out=self.totals();if known{out.sort_by_key(|m|(stock[m.id as usize]>=m.count,m.id));}out}
- pub fn remove_completed(&mut self,kind:u8,id:u16,level:u8)->bool{let mut changed=false;for i in 0..CAPACITY{if self.slots[i].is_some_and(|e|e.recipe.kind==kind&&e.recipe.id==id&&e.recipe.level==level){self.slots[i]=None;self.costs[i]=0;changed=true;}}changed}
+ pub fn remove_completed(&mut self,kind:u8,id:u16,level:u8)->bool{let mut changed=false;for i in 0..CAPACITY{if self.slots[i].is_some_and(|e|e.recipe.kind==kind&&e.recipe.id==id&&e.recipe.level==level){self.slots[i]=None;self.costs[i]=0;self.registration[i]=0;changed=true;}}if changed{self.normalize_registration();}changed}
  pub fn registered(&self,recipe:Recipe)->Option<usize>{self.slots.iter().position(|e|e.is_some_and(|e|e.recipe==recipe))}
  pub fn requiring_material(&self,id:u16)->Vec<usize>{
   self.slots.iter().enumerate().filter_map(|(slot,entry)|entry.filter(|e|e.recipe.materials.iter().any(|m|m.id==id&&m.count>0)).map(|_|slot)).collect()
@@ -53,13 +78,14 @@ impl List{
  }
  pub fn encode_character(&self)->String{let mut s=String::from("version=1\ninitialized=1\n");self.append_entries(&mut s);s}
  fn append_entries(&self,s:&mut String){
-  for (i,e) in self.slots.iter().enumerate(){if let Some(e)=e{let r=e.recipe;s.push_str(&format!("slot{}={},{},{},{},{}",i,r.kind,r.id,r.level,r.group,r.points));for m in r.materials{s.push_str(&format!(",{},{}",m.id,m.count))}s.push('\n');s.push_str(&format!("cost{}={}\n",i,self.costs[i]));}}
+  for (i,e) in self.slots.iter().enumerate(){if let Some(e)=e{let r=e.recipe;s.push_str(&format!("slot{}={},{},{},{},{}",i,r.kind,r.id,r.level,r.group,r.points));for m in r.materials{s.push_str(&format!(",{},{}",m.id,m.count))}s.push('\n');s.push_str(&format!("cost{}={}\nregistration{}={}\n",i,self.costs[i],i,self.registration[i]));}}
  }
  pub fn decode(text:&str)->Result<Self,()>{
-  if !text.lines().any(|l|l=="version=1"){return Err(())}let mut list=Self::default();
+  if !text.lines().any(|l|l=="version=1"){return Err(())}let mut list=Self::default();let mut ranks=[None;CAPACITY];
   for line in text.lines(){let Some((key,value))=line.split_once('=') else{continue};
    if let Some(i)=key.strip_prefix("pad_binding"){if let Ok(i)=i.parse::<usize>(){if i<crate::binding_model::COUNT{if let Ok(v)=value.parse::<u32>(){if v>0&&v&!crate::binding_model::PAD_MASK==0{list.pad_bindings[i]=v;}}}}}
    if let Some(i)=key.strip_prefix("key_binding"){if let Ok(i)=i.parse::<usize>(){if i<crate::binding_model::COUNT{if let Ok(v)=value.parse::<u32>(){if crate::binding_model::valid_key(v){list.key_bindings[i]=v;}}}}}
+   if let Some(i)=key.strip_prefix("registration"){let i:usize=i.parse().map_err(|_|())?;if i>=CAPACITY||ranks[i].is_some(){return Err(())}let rank:u8=value.parse().map_err(|_|())?;if rank==0||rank>48{return Err(())}ranks[i]=Some(rank);}
    if key=="layout"{list.layout=value.parse().map_err(|_|())?;if list.layout>=3{return Err(())}}
    if key=="ui_scale"{list.ui_scale=value.parse().map_err(|_|())?;if !(50..=100).contains(&list.ui_scale){return Err(())}}
    if key=="open_sound"{list.open_sound=value.parse().map_err(|_|())?;}
@@ -72,6 +98,8 @@ impl List{
     let r=Recipe{kind:v[0] as u8,id:v[1],level:v[2] as u8,group:v[3],points:v[4],materials:core::array::from_fn(|n|Material{id:v[5+n*2],count:v[6+n*2] as u32})};
     list.insert(i,r).map_err(|_|())?;
    }
-  }Ok(list)
+  }
+  let explicit=ranks.iter().any(Option::is_some);if explicit{let mut used=[false;49];for i in 0..CAPACITY{if list.slots[i].is_some(){let rank=ranks[i].ok_or(())?;if used[rank as usize]{return Err(())}used[rank as usize]=true;list.registration[i]=rank;}else if ranks[i].is_some(){return Err(())}}}
+  else{for i in 0..CAPACITY{if list.slots[i].is_some(){list.registration[i]=(i+1) as u8;}}}list.normalize_registration();Ok(list)
  }
 }

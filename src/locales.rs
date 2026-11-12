@@ -88,3 +88,19 @@ pub const BINDINGS_CONTROLLER:Label=["Controller","手柄","控制器","ゲー�
 pub const BINDINGS_KEYBOARD:Label=["Keyboard","键盘","鍵盤","キーボード","키보드","Tastatur","Clavier","Tastiera","Teclado"];
 
 pub const PAD_BINDINGS_TITLE:Label=["Button bindings","按钮绑定","按鈕綁定","ボタン割り当て","버튼 바인딩","Controller-Belegung","Affectation des boutons","Assegnazione pulsanti","Asignación de botones"];
+
+pub const SORT:Label=["Sort","排序","排序","並べ替え","정렬","Sortieren","Trier","Ordina","Ordenar"];
+pub const SORT_PRIMARY:Label=["Sort order","排序依据","排序依據","並び順","정렬 기준","Sortierkriterium","Critère de tri","Criterio principale","Criterio principal"];
+pub const SORT_SECONDARY:Label=["Secondary order","次级排序","次要排序","追加の並び順","추가 정렬","Zusatzkriterium","Critère secondaire","Criterio secondario","Criterio secundario"];
+pub const SORT_CRITERIA:[Label;3]=[
+ ["Registration order","登记顺序","登錄順序","登録順","등록순","Registrierungsreihenfolge","Ordre d’inscription","Ordine di registrazione","Orden de registro"],
+ ["Materials ready first","素材齐备优先","素材齊備優先","素材充足を優先","소재 충족 우선","Materialien vorhanden zuerst","Matériaux réunis en premier","Prima materiali disponibili","Materiales reunidos primero"],
+ ["Missing materials first","素材不足优先","素材不足優先","素材不足を優先","소재 부족 우선","Fehlende Materialien zuerst","Matériaux manquants en premier","Prima materiali mancanti","Materiales faltantes primero"]];
+pub const SORT_CATEGORIES:[Label;6]=[
+ ["None","无","無","なし","없음","Keine","Aucun","Nessuno","Ninguno"],
+ ["Weapons","武器","武器","武器","무기","Waffen","Armes","Armi","Armas"],
+ ["Armor","防具","防具","防具","방어구","Rüstung","Armures","Armature","Armaduras"],
+ ["Decorations","装饰品","裝飾品","装飾品","장식품","Dekorationen","Joyaux","Decorazioni","Adornos"],
+ ["Palico weapons","随从武器","隨從武器","オトモ武器","동반자 무기","Palico-Waffen","Armes de Palico","Armi compagno","Armas de camarada"],
+ ["Palico armor","随从防具","隨從防具","オトモ防具","동반자 방어구","Palico-Rüstung","Armures de Palico","Armature compagno","Armaduras de camarada"]];
+pub const SORT_WAIT:Label=["Checking material counts. Please try again shortly.","正在确认素材数量，请稍后重试。","正在確認素材數量，請稍後重試。","素材数を確認中です。しばらくしてから再試行してください。","소재 정보를 확인하고 있습니다. 잠시 후 다시 시도하십시오.","Materialbestand wird geprüft. Bitte gleich erneut versuchen.","Vérification des matériaux. Réessayez dans un instant.","Verifica dei materiali in corso. Riprova tra poco.","Comprobando materiales. Inténtalo de nuevo en un momento."];

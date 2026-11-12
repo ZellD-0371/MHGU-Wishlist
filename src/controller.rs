@@ -1,7 +1,7 @@
 //! Chain existing input import wrappers, including Better-Skillinfo's filter.
 use core::{ptr,sync::atomic::{AtomicU32,AtomicBool,Ordering}};
 use crate::{STATE,native::rd};
-pub const DETAIL:u32=1024;pub const TAB_PREV:u32=2048;pub const TAB_NEXT:u32=4096;
+pub const SORT:u32=32768;pub const DETAIL:u32=1024;pub const TAB_PREV:u32=2048;pub const TAB_NEXT:u32=4096;
 pub const PAD_REGISTER:u32=8192;pub const PAD_LIST:u32=16384;
 pub const OPEN_REGISTER:u32=1;pub const OPEN_LIST:u32=2;pub const ACCEPT:u32=4;pub const BACK:u32=8;pub const UP:u32=16;pub const DOWN:u32=32;pub const PREV:u32=64;pub const NEXT:u32=128;pub const DELETE:u32=256;pub const TAB:u32=512;
 const GOT:[u32;5]=[0x1838494,0x1838498,0x183849c,0x18384a0,0x18384a4];
@@ -27,7 +27,7 @@ unsafe fn filter(index:usize,state:u32,id:u32){
    if !open{
     if pressed&1!=0&&(s.at_smithy()||crate::game_menu::visible(s.base)){s.events|=PAD_LIST;}
     else if pressed&2!=0&&s.active().is_some(){s.events|=PAD_REGISTER;}
-   }else{let previous=INTERNAL_HELD.swap(raw,Ordering::AcqRel);let pressed=raw&!previous;for (bit,event) in [(0,ACCEPT),(1,BACK),(2,DELETE),(6,TAB_PREV),(7,TAB_NEXT),(12,PREV),(13,UP),(14,NEXT),(15,DOWN),(8,DETAIL),(9,DETAIL)]{if pressed&(1<<bit)!=0{s.events|=event}}}
+   }else{let previous=INTERNAL_HELD.swap(raw,Ordering::AcqRel);let pressed=raw&!previous;for (bit,event) in [(0,ACCEPT),(1,BACK),(2,DELETE),(3,SORT),(6,TAB_PREV),(7,TAB_NEXT),(12,PREV),(13,UP),(14,NEXT),(15,DOWN),(8,DETAIL),(9,DETAIL)]{if pressed&(1<<bit)!=0{s.events|=event}}}
   }
   if !open||menu||capture{INTERNAL_HELD.store(raw,Ordering::Release);}
   if menu{false}else{capture||open||s.events&(PAD_REGISTER|PAD_LIST)!=0}

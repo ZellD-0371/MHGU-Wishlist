@@ -16,6 +16,7 @@ s=s.replace('core::ptr::read_unaligned(p as *const u16)','crate::native::half(p)
 header=r"""
 extern crate alloc;
 #[path="__SRC__/binding_model.rs"]mod binding_model;
+#[path="__SRC__/sorting.rs"]mod sorting;
 #[path="__SRC__/model.rs"]mod model;
 #[path="__SRC__/badge_model.rs"]mod badge_model;
 macro_rules! original {($($args:expr),*)=>{0u32};}

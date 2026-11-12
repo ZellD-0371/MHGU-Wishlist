@@ -220,5 +220,6 @@ pub fn load_character(slot:usize)->Result<crate::model::List,ReadError>{
  if let Some(assigned)=plan.claim{let mut out=legacy.encode();let _=writeln!(&mut out,"migration_character={}",assigned);WISHLIST.save(&out).map_err(|_|ReadError::Io)?;}
  if plan.write{character(slot).save(&plan.list.encode_character()).map_err(|_|ReadError::Io)?;}
 
+ // Reopening must preserve deliberately chosen slots, including gaps.
  Ok(plan.list)
 }

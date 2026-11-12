@@ -25,7 +25,7 @@ canvas=source[source.index('static mut FONT'):source.index('fn save(')]
 draw=source[source.index('fn materials('):source.index('pub fn render()')]
 render=source[source.index('pub fn render()'):source.index('pub fn menu()')]
 render='pub fn render(){let cv=Canvas::new().unwrap();STATE.with(|s|{'+render.split(' STATE.with(|s|{',1)[1]
-modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['binding_model','model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications'])
+modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['sorting','binding_model','model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications'])
 stub=r'''
 
 extern crate alloc;extern crate self as forge;
@@ -74,7 +74,7 @@ mod text_data{pub fn init(){}pub fn description(k:u8,id:u16,l:usize)->&'static s
 mod native_badges{pub struct Marker{pub x:f32,pub y:f32}pub fn available()->bool{false}pub fn markers(_: &super::List,_:u32)->Vec<Marker>{vec![]}}
 mod game_menu{pub fn visible(_:u32)->bool{false}}
 mod sound{pub enum Cue{Open}pub fn cue(_:Cue){}}use sound::Cue;
-struct State{installed:bool,loaded:bool,game_ready:bool,base:u32,mode:u8,list:List,stock:[u32;4096],stock_ready:bool,aggregate:interaction::AggregateFocus,selected:usize,focus:interaction::Focus,preview:bool,preview_panel:usize,preview_clock:f32,frozen:Option<Recipe>,detail_page:usize,tab:usize,status:u8,notices:notifications::Queue,notice_demo:Option<notifications::Demo>,notice_test_case:usize}
+struct State{sort:Option<sorting::Dialog>,installed:bool,loaded:bool,game_ready:bool,base:u32,mode:u8,list:List,stock:[u32;4096],stock_ready:bool,aggregate:interaction::AggregateFocus,selected:usize,focus:interaction::Focus,preview:bool,preview_panel:usize,preview_clock:f32,frozen:Option<Recipe>,detail_page:usize,tab:usize,status:u8,notices:notifications::Queue,notice_demo:Option<notifications::Demo>,notice_test_case:usize}
 impl State{fn active(&self)->Option<Recipe>{None}fn at_smithy(&self)->bool{false}}
 thread_local!{static STORE:RefCell<Option<State>>=const{RefCell::new(None)};}
 struct Shared;static STATE:Shared=Shared;impl Shared{fn with<R>(&self,f:impl FnOnce(&mut State)->R)->R{STORE.with(|v|f(v.borrow_mut().as_mut().unwrap()))}}
@@ -85,8 +85,8 @@ fn main(){
  let r=g::RECIPES.iter().find(|r|r.kind==1&&name(**r,0).contains("Rathalos")).copied().unwrap_or(g::RECIPES[0]);list.slots[0]=Some(model::Entry{recipe:r,ready:None});
  let mut stock=[99;4096];stock[r.materials[0].id as usize]=0;
  let frozen=g::RECIPES.iter().find(|r|r.kind==7).copied();
- let mut s=State{installed:true,loaded:true,game_ready:true,base:0,mode:2,list,stock,stock_ready:true,aggregate:Default::default(),selected:0,focus:Default::default(),preview:false,preview_panel:0,preview_clock:0.,frozen,detail_page:0,tab:0,status:0,notices:notifications::Queue::default(),notice_demo:None,notice_test_case:2};
- match screen{"register"=>{s.mode=1;s.selected=7},"register-filled"=>s.mode=1,"materials"=>s.tab=1,"inspect"=>s.focus.material=true,"skills"=>s.detail_page=1,"confirm"=>s.mode=4,"done"=>s.mode=5,"overwrite"=>s.mode=3,"quick-remove"=>s.mode=8,"notice"=>{s.mode=0;s.notices.push(r);},"notice-test"=>start_notice_demo(&mut s),"weapon"=>s.selected=2,"category"=>{if let Some(r)=g::RECIPES.iter().find(|r|r.group>0){s.list.slots[0]=Some(model::Entry{recipe:*r,ready:None})}},_=>()}
+ let mut s=State{sort:None,installed:true,loaded:true,game_ready:true,base:0,mode:2,list,stock,stock_ready:true,aggregate:Default::default(),selected:0,focus:Default::default(),preview:false,preview_panel:0,preview_clock:0.,frozen,detail_page:0,tab:0,status:0,notices:notifications::Queue::default(),notice_demo:None,notice_test_case:2};
+ match screen{"sort-primary"=>s.sort=Some(sorting::Dialog::default()),"sort-secondary"=>s.sort=Some(sorting::Dialog{secondary:true,criterion:1,..Default::default()}),"sort-wait"=>s.sort=Some(sorting::Dialog{secondary:true,criterion:1,message:1,..Default::default()}),"register"=>{s.mode=1;s.selected=7},"register-filled"=>s.mode=1,"materials"=>s.tab=1,"inspect"=>s.focus.material=true,"skills"=>s.detail_page=1,"confirm"=>s.mode=4,"done"=>s.mode=5,"overwrite"=>s.mode=3,"quick-remove"=>s.mode=8,"notice"=>{s.mode=0;s.notices.push(r);},"notice-test"=>start_notice_demo(&mut s),"weapon"=>s.selected=2,"category"=>{if let Some(r)=g::RECIPES.iter().find(|r|r.group>0){s.list.slots[0]=Some(model::Entry{recipe:*r,ready:None})}},_=>()}
  if screen=="materials-long"{let r=*g::RECIPES.iter().find(|r|r.kind==9&&r.id==51&&r.materials.iter().any(|m|g::ITEMDATA.get(m.id as usize*2).is_some_and(|v|v[0]=="Gore Magala Feeler+"))).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});s.stock.fill(0);s.tab=1;}
  if screen=="braces"{let r=*g::RECIPES.iter().find(|r|r.kind==3&&r.id==3&&r.level==0).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
  if screen=="long-equipment"{let r=*g::RECIPES.iter().max_by(|a,b|imgui::calc_text_size(name(**a,lang),false,0.).x.total_cmp(&imgui::calc_text_size(name(**b,lang),false,0.).x)).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
@@ -136,18 +136,19 @@ def paint(commands,width=1280,height=720):
    x,y,x2,y2=clips[-1];mask=Image.new('L',im.size);ImageDraw.Draw(mask).rectangle((x,y,x2,y2),fill=255);layer.putalpha(ImageChops.multiply(layer.getchannel('A'),mask))
   im.alpha_composite(layer)
  return im.convert('RGB')
-screens=['register','register-filled','list','braces','materials','materials-long','prompts','inspect','skills','confirm','done','overwrite','notice','notice-test','weapon','category','quick-remove']
+screens=['register','register-filled','list','braces','materials','materials-long','prompts','inspect','skills','confirm','done','overwrite','notice','notice-test','weapon','category','quick-remove','sort-primary','sort-secondary','sort-wait']
 for screen in screens:
  raw=subprocess.check_output([str(OUT/'capture.exe'),screen,'4'],text=True,encoding='utf-8');commands=[json.loads(s) for s in raw.splitlines()]
  (OUT/(screen+'.json')).write_text(json.dumps(commands,ensure_ascii=False),encoding='utf-8');paint(commands).save(OUT/(screen+'.png'))
  print(screen,len(commands),'draw commands')
 print('Offline draw proofs:',OUT)
-for screen in ['register','confirm','done','overwrite','notice','list','braces','materials-long','prompts']:
+for screen in ['register','confirm','done','overwrite','notice','list','braces','materials-long','prompts','sort-primary','sort-secondary','sort-wait']:
  raw=subprocess.check_output([str(OUT/'capture.exe'),screen,'0'],text=True,encoding='utf-8')
  commands=[json.loads(s) for s in raw.splitlines()]
  (OUT/(screen+'.en.json')).write_text(json.dumps(commands),encoding='utf-8');paint(commands).save(OUT/(screen+'.en.png'))
 adv=struct.unpack('<65536f',(OUT/'advances.bin').read_bytes());problems=[]
 locale_source=(ROOT/'src/locales.rs').read_text(encoding='utf-8')
+sort_labels=[json.loads(re.search(r'pub const '+key+r':\[Label;[36]\]=(\[.*?\]);',locale_source,re.S).group(1)) for key in ['SORT_CRITERIA','SORT_CATEGORIES']]
 tab_labels=[json.loads(re.search(r'pub const '+key+r':Label=(\[.*?\]);',locale_source).group(1)) for key in ['LIST','TOTAL']]
 def label(key):return json.loads(re.search(r'pub const '+key+r':Label=(\[.*?\]);',locale_source).group(1))
 labels={key:label(key) for key in ['REGISTER_ACTION','NO_EQUIPMENT','DONE','CLOSE','YES','NO','NOTICE','TITLE','DELETE_QUESTION','REPLACE_QUESTION']}
@@ -163,6 +164,18 @@ for lang in range(9):
  for screen in screens:
   raw=subprocess.check_output([str(OUT/'capture.exe'),screen,str(lang)],text=True,encoding='utf-8');clips=[]
   commands=list(map(json.loads,raw.splitlines()))
+  if screen.startswith('sort-'):
+   secondary=screen!='sort-primary';left=298. if secondary else 418.;right=662.
+   for i,label in enumerate(sort_labels[0]):
+    row=next(a for typ,*a in commands if typ=='text' and a[4]==label[lang])
+    icon=next(a for typ,*a in commands if typ=='icon' and a[1]==left+10. and a[2]==286.+i*62.)
+    assert row[0]>=icon[1]+icon[3]+10.,(lang,screen,'primary icon overlaps label')
+   if secondary:
+    for i,label in enumerate(sort_labels[1]):
+     row=next(a for typ,*a in commands if typ=='text' and a[4]==label[lang])
+     icon=next(a for typ,*a in commands if typ=='icon' and a[1]==right+(9. if i==0 else 8.) and abs(a[2]-(281.+i*44. if i==0 else 271.+i*44.))<.01)
+     assert row[0]>=icon[1]+icon[3]+8.,(lang,screen,'secondary icon overlaps label')
+   else:assert all(label[lang] not in [a[-1] for a in commands if a[0]=='text'] for label in sort_labels[1]),(lang,'secondary choices shown too early')
   for command in commands:
    typ,*a=command
    if typ=='clip':clips.append(a)
@@ -246,7 +259,7 @@ if '--matrix' in __import__('sys').argv:
  import html,math
  sizes=[(1280,720),(1920,1080),(2560,1600),(3440,1440),(5120,1440),(1024,768)]
  scales=[50,60,70,80,90,100]
- cases=['register','materials','category','confirm','notice','long-equipment','long-material']
+ cases=['register','materials','category','confirm','notice','long-equipment','long-material','sort-primary','sort-secondary','sort-wait']
  failures=[];runs=0;gallery=[]
  for lang in range(9):
   for percent in scales:
