@@ -28,3 +28,4 @@ Desktop.ini
 *.bak
 
 # Cargo.lock, conf/wishlist.ini, generated Rust data, and assets are build inputs.
+tools/REGRESSION.md

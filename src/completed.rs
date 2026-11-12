@@ -47,7 +47,7 @@ pub fn update(profile:usize){
  let (mut next,expected)=STATE.with(|s|(s.list.clone(),s.profile));if expected!=Some(profile){return}
  let mut changed=false;for value in values{if value>0{changed|=next.remove_completed((value>>24) as u8,value as u16,(value>>16) as u8);}}
  if !changed{return}
- match storage::character(profile).save(&next.encode()){
+ match storage::character(profile).save(&next.encode_character()){
   Ok(())=>STATE.with(|s|{s.list=next;s.notices.retain_registered(&s.list);s.status=0;}),
   Err(_)=>{for value in values{enqueue(value)}STATE.with(|s|s.status=3);}
  }

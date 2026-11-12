@@ -75,3 +75,16 @@ pub const INSPECT_ENTRY:Label=["View the registered contents.","查看登记内�
 pub const HOTKEYS:Label=["R3 / F5: Register / Remove | `: Wishlist\nL3 + R3: Wishlist at smithy or + menu","R3 / F5: 登记 / 删除 | `: 愿望清单\nL3 + R3: 加工店或 + 菜单","R3 / F5: 登錄 / 刪除 | `: 願望清單\nL3 + R3: 加工店或 + 選單","R3 / F5: 登録 / 解除 | `: リスト\nL3 + R3: 加工屋または + メニュー","R3 / F5: 찜 등록 / 삭제 | `: 찜 목록\nL3 + R3: 가공점 또는 + 메뉴에서 찜 목록 열기","R3 / F5: Eintragen / Entfernen | `: Wunschliste\nL3 + R3: Schmiede oder +-Menü","R3 / F5 : Inscrire / Retirer | F6 : Liste\nL3 + R3 : Forge ou menu +","R3 / F5: Registra / Rimuovi | `: Lista\nL3 + R3: Forgia o menu +","R3 / F5: Registrar / Quitar | `: Lista\nL3 + R3: Herrería o menú +"];
 
 pub const QUICK_REMOVE:Label=["Remove","取消收藏","取消收藏","登録解除","찜 삭제","Entfernen","Retirer","Rimuovi","Quitar"];
+
+// Preference controls are distinct from automatic wishlist-entry persistence.
+pub const SETTINGS_DEFAULTS:Label=["Defaults","默认值","預設值","初期設定","기본값","Standardwerte","Valeurs par défaut","Predefiniti","Predeterminados"];
+pub const SETTINGS_SAVE:Label=["Save settings","保存设置","儲存設定","設定を保存","설정 저장","Einstellungen speichern","Enregistrer les réglages","Salva impostazioni","Guardar ajustes"];
+pub const SETTINGS_PENDING:Label=["Unsaved changes.","有未保存的更改。","有未儲存的變更。","未保存の変更があります。","저장하지 않은 변경 사항이 있습니다.","Ungespeicherte Änderungen.","Modifications non enregistrées.","Modifiche non salvate.","Cambios sin guardar."];
+pub const SETTINGS_SAVED:Label=["Settings saved.","设置已保存。","設定已儲存。","設定を保存しました。","설정을 저장했습니다.","Einstellungen gespeichert.","Réglages enregistrés.","Impostazioni salvate.","Ajustes guardados."];
+pub const SETTINGS_FAILED:Label=["Could not save settings. Changes are active for this session only. Try again.","无法保存设置。更改仅在本次运行中生效，请重试。","無法儲存設定。變更僅於本次執行生效，請重試。","設定を保存できませんでした。変更は今回の起動中のみ有効です。再試行してください。","설정을 저장하지 못했습니다. 변경 사항은 이번 실행 중에만 적용됩니다. 다시 시도하세요.","Speichern fehlgeschlagen. Änderungen gelten nur für diese Sitzung. Erneut versuchen.","Échec de sauvegarde. Modifications actives pour cette session uniquement. Réessayez.","Salvataggio fallito. Modifiche attive solo per questa sessione. Riprova.","No se guardaron los ajustes. Los cambios solo se aplican a esta sesión. Reinténtalo."];
+
+pub const BINDINGS_TITLE:Label=["Button / key bindings","按钮 / 按键绑定","按鈕 / 按鍵綁定","ボタン / キー割り当て","버튼 / 키 바인딩","Tastenbelegung","Affectation boutons / touches","Assegnazione pulsanti / tasti","Asignación de botones / teclas"];
+pub const BINDINGS_CONTROLLER:Label=["Controller","手柄","控制器","ゲームパッド","패드","Controller","Manette","Controller","Mando"];
+pub const BINDINGS_KEYBOARD:Label=["Keyboard","键盘","鍵盤","キーボード","키보드","Tastatur","Clavier","Tastiera","Teclado"];
+
+pub const PAD_BINDINGS_TITLE:Label=["Button bindings","按钮绑定","按鈕綁定","ボタン割り当て","버튼 바인딩","Controller-Belegung","Affectation des boutons","Assegnazione pulsanti","Asignación de botones"];

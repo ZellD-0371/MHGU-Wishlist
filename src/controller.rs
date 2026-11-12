@@ -1,5 +1,5 @@
 //! Chain existing input import wrappers, including Better-Skillinfo's filter.
-use core::{ptr,sync::atomic::{AtomicU32,Ordering}};
+use core::{ptr,sync::atomic::{AtomicU32,AtomicBool,Ordering}};
 use crate::{STATE,native::rd};
 pub const DETAIL:u32=1024;pub const TAB_PREV:u32=2048;pub const TAB_NEXT:u32=4096;
 pub const PAD_REGISTER:u32=8192;pub const PAD_LIST:u32=16384;
@@ -8,19 +8,29 @@ const GOT:[u32;5]=[0x1838494,0x1838498,0x183849c,0x18384a0,0x18384a4];
 const PLT:[u32;5]=[0x13f0af0,0x13f0afc,0x13f0b08,0x13f0b14,0x13f0b20];
 static ORIGINAL:[AtomicU32;5]=[const{AtomicU32::new(0)};5];
 static HELD:AtomicU32=AtomicU32::new(0);
+static KEYBOARD_WAITING:AtomicBool=AtomicBool::new(false);
+static INTERNAL_HELD:AtomicU32=AtomicU32::new(0);
 static RELEASE:AtomicU32=AtomicU32::new(0);
 unsafe fn filter(index:usize,state:u32,id:u32){
  let address=ORIGINAL[index].load(Ordering::Acquire);let call:unsafe extern "C" fn(u32,u32)=unsafe{core::mem::transmute(address)};unsafe{call(state,id)};
  if state<0x10000||unsafe{rd(state+32)}&1==0{return}
- let buttons=unsafe{rd(state+8)};let pressed=buttons&!HELD.swap(buttons,Ordering::AcqRel);
- if forge::graphics::Graphics::is_menu_visible(){return}
+ let buttons=unsafe{rd(state+8)};
+ let raw=crate::bindings::snapshot(buttons,unsafe{rd(state+16)} as i32,unsafe{rd(state+20)} as i32,unsafe{rd(state+24)} as i32,unsafe{rd(state+28)} as i32);
+ crate::bindings::publish(raw);
+ let keyboard=crate::bindings::keyboard_active();let raw=if keyboard{KEYBOARD_WAITING.store(true,Ordering::Release);0}else if KEYBOARD_WAITING.load(Ordering::Acquire){if raw==0{KEYBOARD_WAITING.store(false,Ordering::Release);}0}else{raw};
+ let menu=forge::graphics::Graphics::is_menu_visible();let capture=crate::bindings::capturing();
  let captured=STATE.with(|s|{
+  let active=crate::binding_model::active(raw,&s.list.pad_bindings);
+  let pressed=active&!HELD.swap(active,Ordering::AcqRel);
   let open=s.mode!=0;
-  if s.game_ready&&s.profile.is_some()&&s.installed&&s.input_ready&&s.loaded{
-   if !open&&pressed&(1<<5)!=0{s.events|=if buttons&(1<<4)!=0{if s.at_smithy()||crate::game_menu::visible(s.base){PAD_LIST}else{0}}else if s.active().is_some(){PAD_REGISTER}else{0};}
-   if open{for (bit,event) in [(0,ACCEPT),(1,BACK),(2,DELETE),(6,TAB_PREV),(7,TAB_NEXT),(12,PREV),(13,UP),(14,NEXT),(15,DOWN),(8,DETAIL),(9,DETAIL)]{if pressed&(1<<bit)!=0{s.events|=event}}}
+  if !menu&&!capture&&s.game_ready&&s.profile.is_some()&&s.installed&&s.input_ready&&s.loaded{
+   if !open{
+    if pressed&1!=0&&(s.at_smithy()||crate::game_menu::visible(s.base)){s.events|=PAD_LIST;}
+    else if pressed&2!=0&&s.active().is_some(){s.events|=PAD_REGISTER;}
+   }else{let previous=INTERNAL_HELD.swap(raw,Ordering::AcqRel);let pressed=raw&!previous;for (bit,event) in [(0,ACCEPT),(1,BACK),(2,DELETE),(6,TAB_PREV),(7,TAB_NEXT),(12,PREV),(13,UP),(14,NEXT),(15,DOWN),(8,DETAIL),(9,DETAIL)]{if pressed&(1<<bit)!=0{s.events|=event}}}
   }
-  open||s.events&(PAD_REGISTER|PAD_LIST)!=0
+  if !open||menu||capture{INTERNAL_HELD.store(raw,Ordering::Release);}
+  if menu{false}else{capture||open||s.events&(PAD_REGISTER|PAD_LIST)!=0}
  });
  let guard=RELEASE.load(Ordering::Acquire);let modal_mask=0x00ffffffu32;
  let mask=if captured{RELEASE.store(buttons&modal_mask,Ordering::Release);modal_mask}else{let held=buttons&guard;RELEASE.store(held,Ordering::Release);held};

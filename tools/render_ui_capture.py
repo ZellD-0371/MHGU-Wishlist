@@ -25,7 +25,7 @@ canvas=source[source.index('static mut FONT'):source.index('fn save(')]
 draw=source[source.index('fn materials('):source.index('pub fn render()')]
 render=source[source.index('pub fn render()'):source.index('pub fn menu()')]
 render='pub fn render(){let cv=Canvas::new().unwrap();STATE.with(|s|{'+render.split(' STATE.with(|s|{',1)[1]
-modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications'])
+modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['binding_model','model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications'])
 stub=r'''
 
 extern crate alloc;extern crate self as forge;
@@ -46,7 +46,7 @@ pub mod imgui{
  #[derive(Clone,Copy)]pub struct ImFont;impl ImFont{pub fn raw(&self)->*mut u8{std::ptr::null_mut()}pub fn load(_: &std::ffi::CStr)->Option<Self>{Some(Self)}}
  pub fn push_font(_: &ImFont,s:Option<f32>){let dpi=std::env::var("PROOF_HOST_FONT_SCALE").ok().and_then(|v|v.parse::<f32>().ok()).unwrap_or(1.);SIZE.with(|v|*v.borrow_mut()=s.unwrap_or(25.)*dpi)}pub fn pop_font(){}
  pub fn calc_text_size(t:&str,_:bool,_:f32)->ImVec2{let s=SIZE.with(|v|*v.borrow());ImVec2{x:t.chars().map(|c|{let at=c as usize*4;if at+4<=ADV.len(){f32::from_le_bytes(ADV[at..at+4].try_into().unwrap())*s}else{s*0.5}}).sum(),y:s}}
- pub struct Io{pub DisplaySize:ImVec2,pub DeltaTime:f32}pub fn get_io()->Io{Io{DisplaySize:ImVec2{x:1280.,y:720.},DeltaTime:0.016}}
+ pub struct Io{pub DisplaySize:ImVec2,pub DeltaTime:f32}pub fn get_io()->Io{Io{DisplaySize:ImVec2{x:std::env::var("PROOF_WIDTH").ok().and_then(|v|v.parse().ok()).unwrap_or(1280.),y:std::env::var("PROOF_HEIGHT").ok().and_then(|v|v.parse().ok()).unwrap_or(720.)},DeltaTime:0.016}}
  #[derive(Clone,Copy)]pub struct DrawList;
  impl DrawList{
   pub fn foreground()->Self{Self}pub fn raw(&self)->*mut u8{1 as *mut u8}
@@ -65,7 +65,7 @@ pub mod imgui{
 }
 mod icons{
  use super::*;include!(concat!(env!("WISHLIST_SRC"),"/icons_generated.rs"));include!(concat!(env!("WISHLIST_SRC"),"/item_text_generated.rs"));
- pub const A:usize=107;pub const B:usize=108;pub const X:usize=109;pub const L3:usize=111;pub const R3:usize=112;pub const ZL:usize=113;pub const ZR:usize=114;pub const DPAD:usize=115;pub const DPAD_LEFT:usize=118;pub const L:usize=116;pub const R:usize=117;
+ pub const Y:usize=110;pub const A:usize=107;pub const B:usize=108;pub const X:usize=109;pub const L3:usize=111;pub const R3:usize=112;pub const ZL:usize=113;pub const ZR:usize=114;pub const DPAD:usize=115;pub const DPAD_LEFT:usize=118;pub const L:usize=116;pub const R:usize=117;
  pub fn init(){}pub fn set_layout(_:usize){}
  pub fn draw(_:imgui::DrawList,t:usize,x:f32,y:f32,w:f32,h:f32,c:u32,f:bool){println!("[\"icon\",{},{},{},{},{},{},{}]",t,x,y,w,h,c,f)}
  pub fn equipment(k:u8)->usize{*EQUIP.get(k as usize).unwrap_or(&46)}pub fn material(id:u16)->(usize,u32){let r=ITEMS[id as usize];(r.0 as usize,PALETTE[r.1 as usize])}
@@ -89,6 +89,8 @@ fn main(){
  match screen{"register"=>{s.mode=1;s.selected=7},"register-filled"=>s.mode=1,"materials"=>s.tab=1,"inspect"=>s.focus.material=true,"skills"=>s.detail_page=1,"confirm"=>s.mode=4,"done"=>s.mode=5,"overwrite"=>s.mode=3,"quick-remove"=>s.mode=8,"notice"=>{s.mode=0;s.notices.push(r);},"notice-test"=>start_notice_demo(&mut s),"weapon"=>s.selected=2,"category"=>{if let Some(r)=g::RECIPES.iter().find(|r|r.group>0){s.list.slots[0]=Some(model::Entry{recipe:*r,ready:None})}},_=>()}
  if screen=="materials-long"{let r=*g::RECIPES.iter().find(|r|r.kind==9&&r.id==51&&r.materials.iter().any(|m|g::ITEMDATA.get(m.id as usize*2).is_some_and(|v|v[0]=="Gore Magala Feeler+"))).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});s.stock.fill(0);s.tab=1;}
  if screen=="braces"{let r=*g::RECIPES.iter().find(|r|r.kind==3&&r.id==3&&r.level==0).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
+ if screen=="long-equipment"{let r=*g::RECIPES.iter().max_by(|a,b|imgui::calc_text_size(name(**a,lang),false,0.).x.total_cmp(&imgui::calc_text_size(name(**b,lang),false,0.).x)).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
+ if screen=="long-material"{let r=*g::RECIPES.iter().max_by(|a,b|{let widest=|r:&Recipe|r.totals().iter().map(|m|imgui::calc_text_size(item(m.id,lang),false,0.).x as u32).max().unwrap_or(0);widest(a).cmp(&widest(b))}).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});s.focus.material=true;}
  STORE.with(|v|*v.borrow_mut()=Some(s));unsafe{FONT=Some(imgui::ImFont)}
  if screen=="prompts"{let cv=Canvas::new().unwrap();cv.bar(1102.,528.,160.,icons::R3,l::QUICK_REMOVE[lang]);cv.bar(1102.,564.,160.,icons::R3,l::REGISTER[lang]);return}
  render();
@@ -101,8 +103,8 @@ subprocess.run(['rustc','+nightly','--edition','2024',str(OUT/'capture.rs'),'-Aw
 sprite_source=(ROOT/'src/icons_generated.rs').read_text(encoding='utf-8');sprites=[tuple(map(int,m)) for m in re.findall(r'Sprite\{x:(\d+),y:(\d+),w:(\d+),h:(\d+)\}',sprite_source)]
 atlas=Image.frombytes('RGBA',(2048,1024),(ROOT/'assets/wishlist-atlas.rgba').read_bytes())
 def color(c):return (c&255,c>>8&255,c>>16&255,c>>24&255)
-def paint(commands):
- im=Image.new('RGBA',(1280,720),'#515e51');clips=[]
+def paint(commands,width=1280,height=720):
+ im=Image.new('RGBA',(width,height),'#515e51');clips=[]
  for cmd in commands:
   typ,*a=cmd
   if typ=='clip':clips.append(a);continue
@@ -175,6 +177,8 @@ for lang in range(9):
       assert abs(ink_x-expected_x)<.6,(screen,lang,text,'horizontal centre')
       assert abs(ink_center-142.5)<.6,(screen,lang,text,'vertical centre')
       centred+=1
+    if screen=='category' and clips and abs(clips[-1][1]-380.)<.01 and abs(clips[-1][3]-419.)<.01:
+     assert abs(ink_center-399.5)<.6,(lang,text,'category material row centre');centred+=1
     if screen=='materials-long' and lang==0 and x==188 and text=='Gore Magala Feeler+':
      assert abs((ink_center-215)/35-round((ink_center-215)/35))<.01,'Long material left its row centre'
      centred+=1;long_checked=True
@@ -237,3 +241,39 @@ print('Host font scale audit:',probes,'comparisons passed')
 
 assert pager_checks>=100 and colour_checks==18,(pager_checks,colour_checks)
 print('Pager spacing / native icon colour audit:',pager_checks+colour_checks,'checks passed')
+
+if '--matrix' in __import__('sys').argv:
+ import html,math
+ sizes=[(1280,720),(1920,1080),(2560,1600),(3440,1440),(5120,1440),(1024,768)]
+ scales=[50,60,70,80,90,100]
+ cases=['register','materials','category','confirm','notice','long-equipment','long-material']
+ failures=[];runs=0;gallery=[]
+ for lang in range(9):
+  for percent in scales:
+   for width,height in sizes:
+    for screen in cases:
+     environment=os.environ.copy();environment['PROOF_WIDTH']=str(width);environment['PROOF_HEIGHT']=str(height)
+     raw=subprocess.check_output([str(OUT/'capture.exe'),screen,str(lang),str(percent)],env=environment,text=True,encoding='utf-8')
+     commands=list(map(json.loads,raw.splitlines()));clips=[]
+     for typ,*a in commands:
+      if typ=='clip':clips.append(a)
+      elif typ=='unclip':assert clips;clips.pop()
+      elif typ=='text':
+       x,y,font_size,colour,text=a;box=ink_box(x,y,font_size,text)
+       if not all(math.isfinite(v) for v in box) or box[0]<-3 or box[1]<-3 or box[2]>width+3 or box[3]>height+3 or (clips and (box[0]<clips[-1][0]-3 or box[2]>clips[-1][2]+3 or box[1]<clips[-1][1]-3 or box[3]>clips[-1][3]+3)):
+        failures.append({'language':lang,'screen':screen,'scale':percent,'size':[width,height],'text':text,'ink':box,'clip':clips[-1] if clips else None})
+      elif typ=='icon':
+       _,x,y,w,h,*_=a
+       if x < -3 or y < -3 or x+w>width+3 or y+h>height+3:failures.append({'language':lang,'screen':screen,'scale':percent,'size':[width,height],'icon_bounds':[x,y,w,h]})
+     assert not clips,(lang,screen,'unbalanced clips')
+     runs+=1
+     # One real-data long-name sample per language, distributed across scales and aspect ratios.
+     if screen=='long-equipment' and percent==scales[lang%len(scales)] and (width,height)==sizes[lang%len(sizes)]:
+      filename=f'matrix-{lang}.png';im=paint(commands,width,height);im.thumbnail((1280,900));im.save(OUT/filename);gallery.append((filename,lang,percent,width,height))
+  print('UI matrix language',lang+1,'/ 9 completed',flush=True)
+ report={'kind':'offline production draw-code regression, not a live-game test','cases':runs,'languages':9,'resolutions':sizes,'scales':scales,'screens':cases,'failure_count':len(failures),'failures':failures[:100]}
+ (OUT/'regression-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+ cards=''.join(f'<section><h2>{html.escape(language_name)} · {percent}% · {width}×{height}</h2><img src="{filename}" loading="lazy"></section>' for filename,lang,percent,width,height in gallery for language_name in [['English','简体中文','繁體中文','日本語','한국어','Deutsch','Français','Italiano','Español'][lang]])
+ (OUT/'regression-gallery.html').write_text('<!doctype html><meta charset="utf-8"><title>Wishlist regression previews</title><style>body{background:#182020;color:#eee;font:16px sans-serif;margin:32px}section{margin:30px 0}img{max-width:100%;border:1px solid #697474}</style><h1>Wishlist UI regression previews</h1><p>Offline rendering of production draw code. These images do not prove native game hooks or live-game rendering. See regression-report.json and the live-game checklist.</p>'+cards,encoding='utf-8')
+ print('UI matrix:',runs,'cases;',len(failures),'failures')
+ assert not failures,failures[:5]

@@ -1,3 +1,4 @@
+#[path="../src/binding_model.rs"]mod binding_model;
 #[path="../src/model.rs"]mod model;
 #[path="../src/generated.rs"]mod generated;
 #[path="../src/locales.rs"]mod locales;
@@ -299,4 +300,45 @@ fn tick_queue(q:&mut notifications::Queue,count:usize){for _ in 0..count{q.advan
  let s=hud_layout::parse("[Other]\nUIAnchor=Edges\n[Display]\nAspectRatio=16:9\nUIAnchor=21:9 ; test\n");assert_eq!(s.aspect,16./9.);assert_eq!(s.anchor,1);
  let s=hud_layout::parse("[Display]\nAspectRatio=Auto\nUIAnchor=Edges\n");assert_eq!(s.aspect,0.);assert_eq!(s.anchor,3);
  let s=hud_layout::parse("[Display]\nAspectRatio=NaN\n");assert_eq!(s.aspect,0.);
+}
+
+#[test]fn custom_bindings_round_trip_and_invalid_values_fall_back(){
+ let mut list=List::default();list.pad_bindings[0]=(1<<6)|(1<<20);list.key_bindings[0]=0x50000|14;
+ let mut copy=List::decode(&list.encode()).unwrap();assert_eq!(copy.pad_bindings,list.pad_bindings);assert_eq!(copy.key_bindings,list.key_bindings);
+ copy.copy_preferences(&List::default());assert_eq!(copy.pad_bindings,binding_model::DEFAULT_PAD);
+ let bad=List::decode("version=1\npad_binding0=4294967295\nkey_binding0=73\nkey_binding1=9999999\n").unwrap();assert_eq!(bad.pad_bindings,binding_model::DEFAULT_PAD);assert_eq!(bad.key_bindings,binding_model::DEFAULT_KEYS);
+}
+#[test]fn binding_chords_are_specific_and_only_fire_on_new_press(){
+ use binding_model::*;let mut e=Edges::default();let both=active(48,&DEFAULT_PAD);assert_eq!(both,1);assert_eq!(events(e.step(both)),2);assert_eq!(e.step(both),0);e.step(0);assert_eq!(events(e.step(both)),2);
+ e.block();assert_eq!(e.step(both),0);e.step(0);assert_eq!(e.step(both),1);
+}
+#[test]fn keyboard_translation_requires_neutral_before_controller_rearms(){
+ let mut g=binding_model::KeyboardGuard::default();assert_eq!(g.filter(32,true),0);assert_eq!(g.filter(32,false),0);assert_eq!(g.filter(0,false),0);assert_eq!(g.filter(32,false),32);
+}
+#[test]fn captures_can_be_replaced_and_need_a_complete_keyboard_key(){
+ use binding_model::*;let mut c=Capture{target:1,..Capture::EMPTY};c.sample(0);c.sample(16);c.sample(48);c.sample(16);assert_eq!(c.candidate,48);c.sample(0);c.sample(64);assert_eq!(c.candidate,64);
+ let mut k=Capture{target:COUNT as u8+1,..Capture::EMPTY};k.sample(0);k.sample(1<<16);assert!(!k.has_binding());k.sample((1<<16)|14);assert!(k.has_binding());k.sample(1<<16);k.sample((1<<16)|15);assert_eq!(k.candidate,(1<<16)|15);
+}
+
+#[test]fn resetting_preferences_preserves_registrations_and_saved_snapshot(){
+ let mut live=List::default();live.insert(0,generated::RECIPES[0]).unwrap();live.costs[0]=123;
+ live.language=4;live.layout=2;live.ui_scale=60;live.pad_bindings[0]=64;live.key_bindings[0]=14;
+ let saved=live.encode();let entry=live.slots[0].unwrap().recipe;live.reset_preferences();
+ assert_eq!(live.language,0);assert_eq!(live.layout,0);assert_eq!(live.ui_scale,100);assert_eq!(live.pad_bindings,binding_model::DEFAULT_PAD);assert_eq!(live.key_bindings,binding_model::DEFAULT_KEYS);
+ assert_eq!(live.slots[0].unwrap().recipe,entry);assert_eq!(live.costs[0],123);
+ let disk=List::decode(&saved).unwrap();assert_eq!(disk.language,4);assert_eq!(disk.pad_bindings[0],64);
+ let mut other=List::default();other.copy_preferences(&live);assert_eq!(other.key_bindings,live.key_bindings);
+}
+
+#[test]fn character_autosave_contains_entries_but_no_unsaved_preferences(){
+ let mut list=List::default();list.language=4;list.pad_bindings[0]=64;list.insert(0,generated::RECIPES[0]).unwrap();list.costs[0]=123;
+ let text=list.encode_character();assert!(!text.contains("language="));assert!(!text.contains("binding"));assert!(!text.contains("layout="));
+ let disk=List::decode(&text).unwrap();assert_eq!(disk.slots[0].unwrap().recipe,list.slots[0].unwrap().recipe);assert_eq!(disk.costs[0],123);
+}
+
+#[test]fn queued_mapped_pad_press_is_blocked_through_keyboard_and_pad_release(){
+ let mut guard=binding_model::KeyboardGuard::new();
+ for (raw,keyboard,blocked) in [(32,true,true),(32,false,true),(0,false,true),(0,false,false),(32,false,false)]{
+  assert_eq!(keyboard||guard.waiting(),blocked);guard.filter(raw,keyboard);
+ }
 }

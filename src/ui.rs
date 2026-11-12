@@ -1,5 +1,7 @@
+#[cfg(feature="keyboard-input")]
+use forge::input::{Input,Key};
 use alloc::{vec::Vec,format,string::String,ffi::CString};
-use forge::{imgui,input::{Input,Key},sys::imgui::{ImVec2,ImDrawFlags,ImGuiComboFlags,ImGuiSelectableFlags}};
+use forge::{imgui,sys::imgui::{ImVec2,ImDrawFlags,ImGuiComboFlags,ImGuiSelectableFlags}};
 use crate::{STATE,State,model::{Recipe,List},locales as l,generated as g,controller as c,storage,sound::{self,Cue}};
 static mut FONT:Option<imgui::ImFont>=None;
 // Steel workshop palette; native button bars below deliberately keep their own art.
@@ -7,6 +9,7 @@ const WHITE:u32=0xffebece9;const GOLD:u32=0xff75bbe9;const BLUE:u32=0xffd3c493;c
 const PANEL:u32=0xf4282620;const INSET:u32=0xee1d1a15;const RAISED:u32=0xff373229;const EDGE:u32=0xff807d70;const RULE:u32=0xff575347;
 // Noto's em includes substantial vertical space: 25 em pixels gives ~18px visible copy.
 const BODY:f32=25.;
+pub(crate) fn push_binding_font()->bool{if let Some(f)=unsafe{FONT}{imgui::push_font(&f,Some(18.));true}else{false}}
 pub fn init(){crate::icons::init();crate::text_data::init();crate::name_data::init();unsafe{FONT=imgui::ImFont::load(c"app:/nativeNX/plugins/wishlist/NotoSansCJKkr-Regular.otf");}}
 fn table_name(table:u8,index:usize,lang:usize)->&'static str{crate::name_data::get(table,index,lang)}
 pub fn name(r:Recipe,lang:usize)->&'static str{match r.kind{
@@ -84,12 +87,20 @@ impl Canvas{
  fn gear(&self,r:Recipe,x:f32,y:f32,size:f32){self.gear_alpha(r,x,y,size,1.);}
  fn gear_alpha(&self,r:Recipe,x:f32,y:f32,size:f32,alpha:f32){if r.kind==25{let (tile,tint)=crate::icons::material(r.id);self.icon(tile,x,y,size,crate::presentation::alpha(tint,alpha));}else{self.icon(crate::icons::equipment(r.kind),x,y,size,crate::presentation::alpha(crate::equipment::icon_tint(r),alpha));}}
  fn sprite(&self,tile:usize,x:f32,y:f32,w:f32,h:f32,tint:u32,flip:bool){let p=self.p(x,y);crate::icons::draw(self.draw,tile,p.x,p.y,w*self.scale,h*self.scale,tint,flip);}
+ fn shortcut_bar(&self,x:f32,y:f32,chord:u32,label:&str){
+  self.bar(x,y,160.,usize::MAX,"");let count=chord.count_ones() as f32;let width=(count*18.+(count-1.).max(0.)*5.).min(90.);let size=18_f32.min((width-(count-1.).max(0.)*5.)/count.max(1.));let mut px=x+8.;
+  for bit in 0..24{if chord&(1<<bit)==0{continue}if px>x+8.{self.box_text(px-5.,y,5.,28.,13.,WHITE,"+",true);}
+   let tile=match bit{0=>Some(crate::icons::A),1=>Some(crate::icons::B),2=>Some(crate::icons::X),3=>Some(crate::icons::Y),4=>Some(crate::icons::L3),5=>Some(crate::icons::R3),6=>Some(crate::icons::L),7=>Some(crate::icons::R),8=>Some(crate::icons::ZL),9=>Some(crate::icons::ZR),12=>Some(crate::icons::DPAD_LEFT),14=>Some(crate::icons::DPAD),_=>None};
+   if let Some(tile)=tile{self.icon(tile,px,y+(28.-size)*0.5,size,WHITE);}else{let text=match bit{10=>"+",11=>"−",13=>"↑",15=>"↓",16=>"L←",17=>"L↑",18=>"L→",19=>"L↓",20=>"R←",21=>"R↑",22=>"R→",_=>"R↓"};self.rect(px,y+(28.-size)*0.5,size,size,RAISED);self.box_text(px,y,size,28.,16.,WHITE,text,true);}px+=size+5.;
+  }self.box_text(x+width+10.,y,142.-width,28.,24.,WHITE,label,false);
+ }
  fn bar(&self,x:f32,y:f32,w:f32,button:usize,label:&str){
   // Native assign.gui: 160x28, 156px black centre, 12px HD lobby end caps.
-  self.rect(x-1.,y,w+4.,28.,0x6e000000);self.rect(x+2.,y,w-4.,28.,0xff000000);
+  // Preserve the native black backing; omit only the old exterior shadow rectangle.
+  self.rect(x+2.,y,w-4.,28.,0xff000000);
   self.sprite(crate::icons::PROMPT_END,x,y,12.,28.,0xffffffff,false);
   self.sprite(crate::icons::PROMPT_END,x+w-12.,y,12.,28.,0xffffffff,true);
-  self.icon(button,x+7.,y+3.,22.,0xffecebe7);self.box_text(x+30.,y,w-38.,28.,24.,0xffecebe7,label,false);
+  if button!=usize::MAX{self.icon(button,x+8.,y+5.,18.,0xffecebe7);}self.box_text(x+28.,y,w-36.,28.,24.,0xffecebe7,label,false);
  }
  fn measure(&self,size:f32,text:&str)->f32{
   // PushFont/CalcTextSize applies Recomp's window/DPI scale a second time.
@@ -161,14 +172,18 @@ impl Canvas{
 }
 fn save(next:List)->bool{
  let profile=STATE.with(|s|s.profile);
- let result=if let Some(slot)=profile{storage::character(slot).save(&next.encode())}else{return false};
+ let result=if let Some(slot)=profile{storage::character(slot).save(&next.encode_character())}else{return false};
  match result{Ok(())=>{STATE.with(|s|{s.list=next;s.notices.retain_registered(&s.list);});true},Err(_)=>{STATE.with(|s|s.status=3);false}}
 }
-fn save_preferences(next:&List)->bool{
- // Preferences never write character registrations, including on the title screen.
- match storage::save_settings(next){
-  Ok(())=>{STATE.with(|s|{s.list.copy_preferences(next);s.settings_loaded=true;s.status=0;});true},
-  Err(_)=>{STATE.with(|s|s.status=3);false}
+pub(crate) fn apply_preferences(next:&List){
+ // Apply in memory immediately. Only the explicit Save settings button writes preferences.
+ STATE.with(|s|{s.list.copy_preferences(next);s.settings_loaded=true;s.settings_notice=1;});
+}
+fn save_preferences()->bool{
+ let next=STATE.with(|s|s.list.clone());
+ match storage::save_settings(&next){
+  Ok(())=>{STATE.with(|s|s.settings_notice=2);true},
+  Err(_)=>{STATE.with(|s|s.settings_notice=3);false}
  }
 }
 fn commit(register:bool){
@@ -228,7 +243,10 @@ fn events(events:u32){
   0
  });if action!=0{commit(action==1)}
 }
-fn keyboard()->u32{let mut e=0;for (key,event) in [(Key::F5,c::OPEN_REGISTER),(Key::Grave,c::OPEN_LIST),(Key::Enter,c::ACCEPT),(Key::Escape,c::BACK),(Key::Up,c::UP),(Key::Down,c::DOWN),(Key::Left,c::PREV),(Key::Right,c::NEXT),(Key::PageUp,c::PREV),(Key::PageDown,c::NEXT),(Key::Delete,c::DELETE),(Key::Tab,c::TAB),(Key::Q,c::DETAIL),(Key::E,c::DETAIL)]{if Input::is_key_pressed(key){e|=event}}e}
+#[cfg(feature="keyboard-input")]
+fn keyboard()->u32{let mut e=0;for (key,event) in [(Key::Enter,c::ACCEPT),(Key::Escape,c::BACK),(Key::Up,c::UP),(Key::Down,c::DOWN),(Key::Left,c::PREV),(Key::Right,c::NEXT),(Key::PageUp,c::PREV),(Key::PageDown,c::NEXT),(Key::Delete,c::DELETE),(Key::Tab,c::TAB),(Key::Q,c::DETAIL),(Key::E,c::DETAIL)]{if Input::is_key_pressed(key){e|=event}}e}
+#[cfg(not(feature="keyboard-input"))]
+fn keyboard()->u32{0}
 fn materials(cv:&Canvas,s:&State,r:Recipe,x:f32,y:f32,w:f32){
  let lang=s.list.language;cv.section(x,y,w,l::MATERIALS[lang]);let mut py=y+40.;let step=if r.group>0&&r.totals().len()>3{35.}else{46.};
  for (i,m) in r.totals().iter().enumerate(){let owned=s.stock[m.id as usize];let good=s.stock_ready&&owned>=m.count;
@@ -243,8 +261,10 @@ fn materials(cv:&Canvas,s:&State,r:Recipe,x:f32,y:f32,w:f32){
   cv.line(x,py+37_f32.min(step-2.),x+w,py+37_f32.min(step-2.),RULE);py+=step;
  }
  if r.group>0{cv.section(x,351.,w,l::GROUP[lang]);
-  if let Some(category)=crate::equipment::CATEGORIES.get(r.group as usize){cv.icon(category.0 as usize,x+4.,386.,27.,crate::icons::PALETTE[category.1 as usize]);cv.fit(x+38.,383.,w-145.,BODY,WHITE,category.2[lang]);}
-  let points=format!("{} pt",r.points);cv.text(x+w-cv.measure(BODY,&points),383.,100.,BODY,WHITE,&points);
+  // Category labels and points use the same row-centering path as ordinary materials.
+  let row_y=380.;let height=39.;
+  if let Some(category)=crate::equipment::CATEGORIES.get(r.group as usize){cv.icon(category.0 as usize,x+4.,row_y+(height-27.)*0.5,27.,crate::icons::PALETTE[category.1 as usize]);cv.box_text(x+38.,row_y,w-145.,height,BODY,WHITE,category.2[lang],false);}
+  let points=format!("{} pt",r.points);let points_width=cv.measure(BODY,&points).min(100.);cv.box_text(x+w-points_width,row_y,points_width,height,BODY,WHITE,&points,false);
  }
 
  if s.focus.material{if let Some(m)=r.totals().get(s.focus.index){
@@ -361,10 +381,14 @@ fn confirmation(cv:&Canvas,s:&State){let lang=s.list.language;cv.draw.add_rect_f
  else{for (yes,x,label) in [(true,460.,l::YES[lang]),(false,668.,l::NO[lang])]{cv.selection(x,424.,152.,39.,s.focus.yes==yes,false);cv.box_text(x,424.,152.,39.,26.,WHITE,label,true);}}
   }
 pub fn render(){
- if forge::graphics::Graphics::is_menu_visible(){return}
+ let menu=forge::graphics::Graphics::is_menu_visible();let capturing=crate::bindings::capturing();
+ let pad_allowed=crate::bindings::pad_shortcuts_allowed();
+ let keys=crate::bindings::keyboard_events(menu||capturing);
+ if capturing{STATE.with(|s|s.events=0);crate::bindings::capture_overlay(crate::bindings::language(STATE.with(|s|s.list.language)));return}
+ if menu{STATE.with(|s|s.events=0);return}
  if !STATE.with(|s|s.installed&&s.loaded&&s.game_ready){return}
- let pad=STATE.with(|s|core::mem::take(&mut s.events));let mut e=keyboard()|(pad&!(c::PAD_REGISTER|c::PAD_LIST));
- if !Input::is_alt_down(){if pad&c::PAD_REGISTER!=0{e|=c::OPEN_REGISTER}if pad&c::PAD_LIST!=0{e|=c::OPEN_LIST}}events(e);
+ let pending=STATE.with(|s|core::mem::take(&mut s.events));let pad=if pad_allowed{pending}else{0};let mut e=(if STATE.with(|s|s.mode==0){keys}else{keyboard()})|(pad&!(c::PAD_REGISTER|c::PAD_LIST));
+ if pad&c::PAD_REGISTER!=0{e|=c::OPEN_REGISTER}if pad&c::PAD_LIST!=0{e|=c::OPEN_LIST}events(e);
  if !STATE.with(|s|s.mode!=0||s.at_smithy()||crate::game_menu::visible(s.base)||!s.notices.is_empty()||crate::native_badges::available()){return}
  // Cache one valid draw list for the frame; never pass a null list to cimgui.
  let Some(cv)=Canvas::new() else{return};
@@ -372,7 +396,8 @@ pub fn render(){
   if !s.installed||!s.loaded||!s.game_ready{return}crate::icons::set_layout(s.list.layout);let lang=s.list.language;
   if s.mode==0{
    if let Some(view)=crate::hud_layout::right_top(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,crate::hud_layout::current(imgui::get_io().DeltaTime)){let native_cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw};for marker in crate::native_badges::markers(&s.list,s.base){native_cv.pin(marker.x,marker.y);}
-   if s.at_smithy()||crate::game_menu::visible(s.base){native_cv.bar(1102.,496.,160.,crate::icons::L3,"");native_cv.plus(1131.,496.,14.,28.);native_cv.icon(crate::icons::R3,1144.,499.,22.,WHITE);native_cv.box_text(1172.,496.,83.,28.,24.,WHITE,l::TITLE[lang],false);}if let Some(r)=s.active(){native_cv.bar(1102.,528.,160.,crate::icons::R3,if s.list.registered(r).is_some(){l::QUICK_REMOVE[lang]}else{l::REGISTER[lang]});}}
+   if s.at_smithy()||crate::game_menu::visible(s.base){let y=if crate::game_menu::visible(s.base){398.}else{496.};native_cv.shortcut_bar(1102.,y,s.list.pad_bindings[0],l::TITLE[lang]);}if let Some(r)=s.active(){let registered=s.list.registered(r).is_some();native_cv.shortcut_bar(1102.,528.,s.list.pad_bindings[1],if registered{l::QUICK_REMOVE[lang]}else{l::REGISTER[lang]});}}
+
 
    for (slot,n) in s.notices.visible(){draw_notice(&cv,n.recipe,lang,crate::presentation::NOTICE_DURATION-n.seconds,slot);}
    s.notices.advance(imgui::get_io().DeltaTime);return
@@ -415,7 +440,6 @@ pub fn menu(){
  if !imgui::tree_node(c"Wishlist"){return}
  let font=unsafe{FONT};if let Some(f)=font{imgui::push_font(&f,Some(18.));}
  let (lang,installed,input)=STATE.with(|s|(s.list.language,s.installed,s.input_ready));
- imgui::text(l::HOTKEYS[lang]);
  #[cfg(feature="debug-ui")]{
  let capture_label=CString::new(if crate::sound::capturing(){l::STOP_SOUND[lang]}else{l::CAPTURE_SOUND[lang]}).unwrap();
  if imgui::button(&capture_label,ImVec2{x:0.,y:0.}){crate::sound::capture(!crate::sound::capturing());}
@@ -424,13 +448,18 @@ pub fn menu(){
  }
  let layouts=["Nintendo","Xbox","PlayStation"];let layout=STATE.with(|s|s.list.layout);
  let current=CString::new(layouts[layout]).unwrap();
- if imgui::begin_combo(c"Button layout",&current,ImGuiComboFlags::None){for (i,name) in layouts.iter().enumerate(){let text=CString::new(*name).unwrap();if imgui::selectable(&text,i==layout,ImGuiSelectableFlags::None,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.layout=i;save_preferences(&list);}}imgui::end_combo();}
+ if imgui::begin_combo(c"Button layout",&current,ImGuiComboFlags::None){for (i,name) in layouts.iter().enumerate(){let text=CString::new(*name).unwrap();if imgui::selectable(&text,i==layout,ImGuiSelectableFlags::None,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.layout=i;apply_preferences(&list);}}imgui::end_combo();}
 
  if !installed||!input{imgui::text("Unavailable: game signature, input, or save data check failed.");}
- let current=CString::new(l::LANGUAGES[lang]).unwrap();if imgui::begin_combo(c"Language",&current,ImGuiComboFlags::None){for (i,label) in l::LANGUAGES.iter().enumerate(){let text=CString::new(*label).unwrap();if imgui::selectable(&text,i==lang,ImGuiSelectableFlags::None,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.language=i;save_preferences(&list);}}imgui::end_combo();}
+ let current=CString::new(l::LANGUAGES[lang]).unwrap();if imgui::begin_combo(c"Language",&current,ImGuiComboFlags::None){for (i,label) in l::LANGUAGES.iter().enumerate(){let text=CString::new(*label).unwrap();if imgui::selectable(&text,i==lang,ImGuiSelectableFlags::None,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.language=i;apply_preferences(&list);}}imgui::end_combo();}
  let scale=STATE.with(|s|s.list.ui_scale);let current=CString::new(format!("{}%",scale)).unwrap();
- if imgui::begin_combo(c"UI scale",&current,ImGuiComboFlags::None){for value in [50,60,70,80,90,100]{let text=CString::new(format!("{}%",value)).unwrap();if imgui::selectable(&text,value==scale,ImGuiSelectableFlags::None,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.ui_scale=value;save_preferences(&list);}}imgui::end_combo();}
- if STATE.with(|s|s.status==3){imgui::text(l::SAVE_FAILED[lang]);}
+ if imgui::begin_combo(c"UI scale",&current,ImGuiComboFlags::None){for value in [50,60,70,80,90,100]{let text=CString::new(format!("{}%",value)).unwrap();if imgui::selectable(&text,value==scale,ImGuiSelectableFlags::None,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.ui_scale=value;apply_preferences(&list);}}imgui::end_combo();}
+ crate::bindings::ui();
+ let defaults=CString::new(l::SETTINGS_DEFAULTS[lang]).unwrap();
+ if imgui::button(&defaults,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.reset_preferences();apply_preferences(&list);}
+ imgui::same_line(0.,-1.);
+ let save=CString::new(l::SETTINGS_SAVE[lang]).unwrap();if imgui::button(&save,ImVec2{x:0.,y:0.}){save_preferences();}
+ match STATE.with(|s|s.settings_notice){1=>imgui::text(l::SETTINGS_PENDING[lang]),2=>imgui::text(l::SETTINGS_SAVED[lang]),3=>imgui::text(l::SETTINGS_FAILED[lang]),_=>{}}
  #[cfg(feature="debug-ui")]{
  let playing=STATE.with(|s|s.game_ready&&s.loaded&&s.profile.is_some());
  if !playing{imgui::text(l::ENTER_GAME[lang]);}

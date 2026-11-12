@@ -218,7 +218,7 @@ pub fn load_character(slot:usize)->Result<crate::model::List,ReadError>{
  let legacy=List::decode(text).map_err(|_|ReadError::Utf8)?;let owner=migration_owner(text);
  let plan=crate::profiles::load(slot,initialized,list,&legacy,owner);
  if let Some(assigned)=plan.claim{let mut out=legacy.encode();let _=writeln!(&mut out,"migration_character={}",assigned);WISHLIST.save(&out).map_err(|_|ReadError::Io)?;}
- if plan.write{character(slot).save(&plan.list.encode()).map_err(|_|ReadError::Io)?;}
+ if plan.write{character(slot).save(&plan.list.encode_character()).map_err(|_|ReadError::Io)?;}
 
  Ok(plan.list)
 }

@@ -19,7 +19,9 @@ unsafe fn half(p:u32)->u16{unsafe{core::ptr::read_unaligned(p as *const u16)}}
 unsafe fn byte(p:u32)->u8{unsafe{core::ptr::read(p as *const u8)}}
 unsafe fn float(p:u32)->f32{f32::from_bits(unsafe{rd(p)})}
 pub fn observe_hunter(owner:u32){HUNTER.store(owner,Ordering::Release);}
-#[forge::hook(offset=0x6f8e48)]
+// Track the parent from its unconditional virtual updater, before entering a recipe.
+// +6F8E48 refreshes recipe data and is not reached on the first equipment-box visit.
+#[forge::hook(offset=0x6f1ae8)]
 fn hunter_update(owner:u32)->u32{let result=original!(owner);if valid(owner){observe_hunter(owner);}result}
 pub fn clear(){for a in &LISTS{a.store(0,Ordering::Release);}HUNTER.store(0,Ordering::Release);CACHE.with(|c|{c.0.fill(EMPTY);c.1=0;});}
 fn list_parent(owner:u32,base:u32)->Option<(u32,bool)>{
@@ -49,12 +51,13 @@ fn grid_icon(owner:u32,group:u32,object:u32,equip:u32,a4:u32,a5:u32)->u32{
 }
 // The base destructor runs before layout memory is released for both list and box classes.
 #[forge::hook(offset=0x56da30)]
-fn destroy_ui(owner:u32)->u32{for p in &LISTS{let _=p.compare_exchange(owner,0,Ordering::AcqRel,Ordering::Relaxed);}CACHE.with(|cache|{for b in &mut cache.0{if b.owner==owner{*b=EMPTY;}}});original!(owner)}
+fn destroy_ui(owner:u32)->u32{let _=HUNTER.compare_exchange(owner,0,Ordering::AcqRel,Ordering::Relaxed);for p in &LISTS{let _=p.compare_exchange(owner,0,Ordering::AcqRel,Ordering::Relaxed);}CACHE.with(|cache|{for b in &mut cache.0{if b.owner==owner{*b=EMPTY;}}});original!(owner)}
 pub fn install(base:u32)->bool{
+ if unsafe{rd(base+HUNTER_VTABLE+0x24)}!=base+0x6f1ae8{return false}
  // Better_Skillinfo also hooks the shared destructor. Forge chains original!()
  // through its previous detour; validate the intact tail rather than disabling
  // all badges solely because that entry already contains Forge's jump.
- for (offset,expected) in [(0x56da30,[0xe92d4010,0xe1a04000,0xe59f0084,0xe79f0000]),(0x6f8e48,[0xe92d4ff0,0xe24dd054,0xe1a04000,0xe5940004]),(0x58b908,[0xe92d4ff0,0xe24dd014,0xe3a01000,0xe3a02001]),(0x56ea38,[0xe92d4bf0,0xe24dd010,0xe1a09002,0xe1a05001])]{
+ for (offset,expected) in [(0x56da30,[0xe92d4010,0xe1a04000,0xe59f0084,0xe79f0000]),(0x6f1ae8,[0xe92d41f0,0xe24dd018,0xe1a04000,0xeb007361]),(0x58b908,[0xe92d4ff0,0xe24dd014,0xe3a01000,0xe3a02001]),(0x56ea38,[0xe92d4bf0,0xe24dd010,0xe1a09002,0xe1a05001])]{
   let site=base+offset;let words=core::array::from_fn(|i|unsafe{rd(site+i as u32*4)});
   if !crate::hook_guard::matches(words,expected,site){forge::log::prelude::error!("[wishlist] badge entry +{:X} rejected ({:08X})",offset,words[0]);return false}
  }

@@ -23,10 +23,11 @@ impl Recipe{
 #[derive(Clone,Copy,Default)]
 pub struct Entry{pub recipe:Recipe,pub ready:Option<bool>}
 #[derive(Clone)]
-pub struct List{pub slots:[Option<Entry>;CAPACITY],pub language:usize,pub costs:[u32;CAPACITY],pub open_sound:u32,pub layout:usize,pub ui_scale:u16}
-impl Default for List{fn default()->Self{Self{slots:[None;CAPACITY],language:0,costs:[0;CAPACITY],open_sound:1,layout:0,ui_scale:100}}}
+pub struct List{pub slots:[Option<Entry>;CAPACITY],pub language:usize,pub costs:[u32;CAPACITY],pub open_sound:u32,pub layout:usize,pub ui_scale:u16,pub pad_bindings:[u32;crate::binding_model::COUNT],pub key_bindings:[u32;crate::binding_model::COUNT]}
+impl Default for List{fn default()->Self{Self{slots:[None;CAPACITY],language:0,costs:[0;CAPACITY],open_sound:1,layout:0,ui_scale:100,pad_bindings:crate::binding_model::DEFAULT_PAD,key_bindings:crate::binding_model::DEFAULT_KEYS}}}
 impl List{
- pub fn copy_preferences(&mut self,settings:&Self){self.language=settings.language;self.layout=settings.layout;self.ui_scale=settings.ui_scale;}
+ pub fn copy_preferences(&mut self,settings:&Self){self.open_sound=settings.open_sound;self.pad_bindings=settings.pad_bindings;self.key_bindings=settings.key_bindings;self.language=settings.language;self.layout=settings.layout;self.ui_scale=settings.ui_scale;}
+ pub fn reset_preferences(&mut self){self.copy_preferences(&Self::default());}
  pub fn insert(&mut self,slot:usize,recipe:Recipe)->Result<(),&'static str>{
   if slot>=CAPACITY||!recipe.valid(){return Err("invalid")}
   if self.slots.iter().enumerate().any(|(i,e)|i!=slot&&e.is_some_and(|e|e.recipe==recipe)){return Err("duplicate")}
@@ -47,11 +48,18 @@ impl List{
  }
  pub fn encode(&self)->String{
   let mut s=format!("version=1\ninitialized=1\nlanguage={}\nopen_sound={}\nlayout={}\nui_scale={}\n",self.language,self.open_sound,self.layout,self.ui_scale);
-  for (i,e) in self.slots.iter().enumerate(){if let Some(e)=e{let r=e.recipe;s.push_str(&format!("slot{}={},{},{},{},{}",i,r.kind,r.id,r.level,r.group,r.points));for m in r.materials{s.push_str(&format!(",{},{}",m.id,m.count))}s.push('\n');s.push_str(&format!("cost{}={}\n",i,self.costs[i]));}}s
+  for i in 0..crate::binding_model::COUNT{s.push_str(&format!("pad_binding{}={}\nkey_binding{}={}\n",i,self.pad_bindings[i],i,self.key_bindings[i]));}
+  self.append_entries(&mut s);s
+ }
+ pub fn encode_character(&self)->String{let mut s=String::from("version=1\ninitialized=1\n");self.append_entries(&mut s);s}
+ fn append_entries(&self,s:&mut String){
+  for (i,e) in self.slots.iter().enumerate(){if let Some(e)=e{let r=e.recipe;s.push_str(&format!("slot{}={},{},{},{},{}",i,r.kind,r.id,r.level,r.group,r.points));for m in r.materials{s.push_str(&format!(",{},{}",m.id,m.count))}s.push('\n');s.push_str(&format!("cost{}={}\n",i,self.costs[i]));}}
  }
  pub fn decode(text:&str)->Result<Self,()>{
   if !text.lines().any(|l|l=="version=1"){return Err(())}let mut list=Self::default();
   for line in text.lines(){let Some((key,value))=line.split_once('=') else{continue};
+   if let Some(i)=key.strip_prefix("pad_binding"){if let Ok(i)=i.parse::<usize>(){if i<crate::binding_model::COUNT{if let Ok(v)=value.parse::<u32>(){if v>0&&v&!crate::binding_model::PAD_MASK==0{list.pad_bindings[i]=v;}}}}}
+   if let Some(i)=key.strip_prefix("key_binding"){if let Ok(i)=i.parse::<usize>(){if i<crate::binding_model::COUNT{if let Ok(v)=value.parse::<u32>(){if crate::binding_model::valid_key(v){list.key_bindings[i]=v;}}}}}
    if key=="layout"{list.layout=value.parse().map_err(|_|())?;if list.layout>=3{return Err(())}}
    if key=="ui_scale"{list.ui_scale=value.parse().map_err(|_|())?;if !(50..=100).contains(&list.ui_scale){return Err(())}}
    if key=="open_sound"{list.open_sound=value.parse().map_err(|_|())?;}
