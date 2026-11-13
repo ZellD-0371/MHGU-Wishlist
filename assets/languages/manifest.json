@@ -1,6 +1,6 @@
 {
-  "format": 1,
-  "inputs_sha256": "2aec1152df2aa416e9e5f78e9253e01c17c25d029551d0a19c1f628ec26b9e5a",
+  "format": 2,
+  "inputs_sha256": "2f015ea8d3669f7249e0fe20849cc184985334980fb1e9eea625921ca3132122",
   "codes": [
     "en",
     "zh-Hans",
@@ -14,80 +14,118 @@
   ],
   "files": {
     "names.en.bin": {
-      "bytes": 681500,
-      "crc32": 3238741627
+      "bytes": 361101,
+      "crc32": 1342793855
     },
     "text.en.bin": {
-      "bytes": 488692,
-      "crc32": 1382859758
+      "bytes": 732936,
+      "crc32": 799930427
     },
     "names.zh-Hans.bin": {
-      "bytes": 770160,
-      "crc32": 3289426125
+      "bytes": 381843,
+      "crc32": 840598293
     },
     "text.zh-Hans.bin": {
-      "bytes": 645526,
-      "crc32": 3651749924
+      "bytes": 964835,
+      "crc32": 3870886286
     },
     "names.zh-Hant.bin": {
-      "bytes": 760196,
-      "crc32": 3279189910
+      "bytes": 381440,
+      "crc32": 4174267112
     },
     "text.zh-Hant.bin": {
-      "bytes": 602893,
-      "crc32": 1229924450
+      "bytes": 909295,
+      "crc32": 3976506662
     },
     "names.ja.bin": {
-      "bytes": 632826,
-      "crc32": 2035768188
+      "bytes": 482441,
+      "crc32": 435521134
     },
     "text.ja.bin": {
-      "bytes": 695547,
-      "crc32": 4148731752
+      "bytes": 734768,
+      "crc32": 2462736851
     },
     "names.ko.bin": {
-      "bytes": 850496,
-      "crc32": 3899182554
+      "bytes": 433134,
+      "crc32": 4053177423
     },
     "text.ko.bin": {
-      "bytes": 677970,
-      "crc32": 621295837
+      "bytes": 1022957,
+      "crc32": 1380360135
     },
     "names.de.bin": {
-      "bytes": 705978,
-      "crc32": 3177859305
+      "bytes": 383006,
+      "crc32": 3367790598
     },
     "text.de.bin": {
-      "bytes": 498392,
-      "crc32": 450068822
+      "bytes": 746301,
+      "crc32": 895799527
     },
     "names.fr.bin": {
-      "bytes": 700353,
-      "crc32": 1366981513
+      "bytes": 386097,
+      "crc32": 506737998
     },
     "text.fr.bin": {
-      "bytes": 453847,
-      "crc32": 3049130870
+      "bytes": 690170,
+      "crc32": 1789308629
     },
     "names.it.bin": {
-      "bytes": 698196,
-      "crc32": 3060115774
+      "bytes": 381045,
+      "crc32": 770364461
     },
     "text.it.bin": {
-      "bytes": 476685,
-      "crc32": 2282212276
+      "bytes": 717751,
+      "crc32": 1340089614
     },
     "names.es.bin": {
-      "bytes": 714562,
-      "crc32": 3017879706
+      "bytes": 393229,
+      "crc32": 731248989
     },
     "text.es.bin": {
-      "bytes": 499890,
-      "crc32": 3744627499
+      "bytes": 746377,
+      "crc32": 4084254206
     },
     "font.shared.otf": {
       "bytes": 2867892,
       "crc32": 1625602643
+    }
+  },
+  "description_indexes": {
+    "en": {
+      "bytes": 100600,
+      "crc32": 2880085038
+    },
+    "zh-Hans": {
+      "bytes": 100600,
+      "crc32": 4271119449
+    },
+    "zh-Hant": {
+      "bytes": 100600,
+      "crc32": 2866034822
+    },
+    "ja": {
+      "bytes": 76672,
+      "crc32": 3840185867
+    },
+    "ko": {
+      "bytes": 100600,
+      "crc32": 2118157134
+    },
+    "de": {
+      "bytes": 100600,
+      "crc32": 385958442
+    },
+    "fr": {
+      "bytes": 100600,
+      "crc32": 3846599876
+    },
+    "it": {
+      "bytes": 100600,
+      "crc32": 4041982924
+    },
+    "es": {
+      "bytes": 100600,
+      "crc32": 2102312165
     }
   },
   "previously_unsupported_characters": [

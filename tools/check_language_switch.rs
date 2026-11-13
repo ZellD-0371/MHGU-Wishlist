@@ -9,6 +9,7 @@ pub mod log{pub mod prelude{pub use crate::error;}}
 #[path="../src/sorting.rs"]mod sorting;
 #[path="../src/text_blob.rs"]mod text_blob;
 #[path="../src/language_pack.rs"]mod language_pack;
+#[path="language_test_source.rs"]mod language_test_source;
 #[path="../src/language_ui.rs"]mod language_ui;
 const CODES:[&str;9]=["en","zh-Hans","zh-Hant","ja","ko","de","fr","it","es"];
 static FAULT:AtomicUsize=AtomicUsize::new(99);
@@ -38,11 +39,11 @@ mod language{
  pub fn current()->Option<usize>{STORE.lock().unwrap().active.as_ref().map(|p|p.language)}
  pub fn path(_:usize,_:usize)->Option<CString>{CString::new("assets/languages/font.shared.otf").ok()}
  pub fn font_valid()->bool{true}
- pub fn prepare(lang:usize)->Result<language_pack::Pack,()>{language_pack::Pack::prepare(lang,|kind|{
+ pub fn prepare(lang:usize)->Result<language_pack::Pack,()>{let mut read=|kind|{
   if FAULT.load(Ordering::SeqCst)==kind{return Err(())}let code=CODES.get(lang).ok_or(())?;
   let mut data=std::fs::read(format!("assets/languages/{}.{}.bin",if kind==0{"names"}else{"text"},code)).map_err(|_|())?;
   if FAULT.load(Ordering::SeqCst)==10+kind{data[0]^=1;}Ok(data)
- })}
+ };let names=read(0)?;let text=read(1)?;language_pack::Pack::prepare(lang,names,Box::new(language_test_source::Memory(text)))}
  pub fn commit(pack:language_pack::Pack){drop(STORE.lock().unwrap().commit(pack));}
  pub fn text(lang:usize)->String{STORE.lock().unwrap().text(false,1,2,lang)}
 }

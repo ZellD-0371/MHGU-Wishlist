@@ -18,12 +18,26 @@ def records(data):
         yield row[0],[data[at:data.index(0,at)].decode('utf-8') for at in row[1:]]
 
 def pack(rows,language):
+    # Missing keys already return "" at runtime; preserve IDs, omit empty rows.
+    rows=[(key,values) for key,values in rows if values[language]]
     header=16+len(rows)*8;pool=bytearray();offsets={};index=bytearray()
     for key,values in rows:
         text=values[language]
         if text not in offsets:offsets[text]=header+len(pool);pool.extend(text.encode()+b'\0')
         index.extend(struct.pack('<II',key,offsets[text]))
-    return b'WLL1'+struct.pack('<III',1,language,len(rows))+index+pool
+    return b'WLL1'+struct.pack('<III',1,language,len(rows))+index+(pool or b'\0')
+
+def description_pack(rows,language):
+    rows=[(key,values[language]) for key,values in rows if values[language]]
+    header=16+len(rows)*8;pool=bytearray();offsets={};index=bytearray()
+    for key,text in rows:
+        raw=text.encode('utf-8');assert len(raw)<=4096
+        if text not in offsets:
+            offsets[text]=header+len(pool)
+            pool.extend(struct.pack('<II',len(raw),crc(raw))+raw)
+        index.extend(struct.pack('<II',key,offsets[text]))
+    prefix=b'WLD1'+struct.pack('<III',1,language,len(rows))+index
+    return prefix+pool,{'bytes':len(prefix),'crc32':crc(prefix)}
 
 def required_characters(names,descriptions):
     common=set(range(32,127))|{0xA0}
@@ -72,10 +86,16 @@ def build(check=False):
         from fontTools import subset
         from fontTools.ttLib import TTFont
     except ImportError:raise SystemExit('Generating language fonts requires fontTools. Run this script with a Python interpreter that has fontTools installed.')
-    font=TTFont(original);cmap=font.getBestCmap();missing=[];files={}
+    font=TTFont(original);cmap=font.getBestCmap();missing=[];files={};description_indexes={}
+    name_rows=[row for row in names if row[0]>>16!=31]
+    description_rows=sorted(descriptions+[row for row in names if row[0]>>16==31])
+    assert len({key for key,_ in description_rows})==len(description_rows)
     for language,code in enumerate(CODES):
-        for prefix,rows in [('names',names),('text',descriptions)]:
-            filename=f'{prefix}.{code}.bin';data=pack(rows,language);(out/filename).write_bytes(data);files[filename]={'bytes':len(data),'crc32':crc(data)}
+        for prefix in ['names','text']:
+            filename=f'{prefix}.{code}.bin'
+            if prefix=='names':data=pack(name_rows,language)
+            else:data,description_indexes[code]=description_pack(description_rows,language)
+            (out/filename).write_bytes(data);files[filename]={'bytes':len(data),'crc32':crc(data)}
         unsupported=sorted(chars[language]-cmap.keys());missing.append(unsupported)
         assert not unsupported,(code,'font source lacks required characters',unsupported)
     # Keep one shared subset: this avoids unsafe font deletion in current Recomp
@@ -98,7 +118,7 @@ def build(check=False):
         obsolete=out/f'font.{code}.otf'
         if obsolete.is_file():obsolete.unlink()
     print('Shared font:',len(data),'bytes;',len(submap),'characters; missing: 0',flush=True)
-    result={'format':1,'inputs_sha256':inputs,'codes':CODES,'files':files,'previously_unsupported_characters':missing}
+    result={'format':2,'inputs_sha256':inputs,'codes':CODES,'files':files,'description_indexes':description_indexes,'previously_unsupported_characters':missing}
     manifest_file.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     emit_rust(result)
     return result
@@ -108,6 +128,10 @@ def emit_rust(manifest):
     for code in CODES:
         names=[f'names.{code}.bin',f'text.{code}.bin','font.shared.otf']
         lines.append('['+','.join(f'({manifest["files"][name]["bytes"]},{manifest["files"][name]["crc32"]})' for name in names)+'],')
+    lines.append('];')
+    lines.append('pub const DESCRIPTION_INDEX:[(usize,u32);9]=[')
+    for code in CODES:
+        meta=manifest['description_indexes'][code];lines.append(f'({meta["bytes"]},{meta["crc32"]}),')
     lines.append('];');(ROOT/'src/language_assets.rs').write_text('\n'.join(lines)+'\n',encoding='utf-8')
 
 if __name__=='__main__':

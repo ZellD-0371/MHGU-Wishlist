@@ -1,4 +1,4 @@
-// Generated from HD Layout. Never substitute original low-resolution textures.
+// Base art from HD Layout. LowMemory uses a derived atlas with the same sprite IDs.
 pub struct Sprite{pub x:u16,pub y:u16,pub w:u16,pub h:u16}
 pub static ART:&[Sprite]=&[
 Sprite{x:1,y:1,w:96,h:96},

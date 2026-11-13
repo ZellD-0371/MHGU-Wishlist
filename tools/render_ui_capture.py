@@ -4,13 +4,14 @@ This does not launch the game or claim to reproduce the runtime font rasterizer.
 PNG text uses Noto's ascent/descent scale, matching ImGui's em-height convention.
 """
 from pathlib import Path
-import re,subprocess,json,struct,ast
+import re,subprocess,json,struct,ast,sys
 from PIL import Image,ImageDraw,ImageFont,ImageChops
 from fontTools.ttLib import TTFont
 from fontTools.pens.boundsPen import BoundsPen
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'target/ui-steel-proof';OUT.mkdir(parents=True,exist_ok=True)
+LOW_MEMORY='--low-memory' in sys.argv
+OUT=ROOT/('target/ui-low-memory-proof' if LOW_MEMORY else 'target/ui-steel-proof');OUT.mkdir(parents=True,exist_ok=True)
 font=TTFont(ROOT/'assets/languages/font.shared.otf');cmap=font.getBestCmap();denom=font['hhea'].ascent-font['hhea'].descent
 (OUT/'advances.bin').write_bytes(b''.join(struct.pack('<f',font['hmtx'][cmap[c]][0]/denom if c in cmap else .5) for c in range(65536)))
 glyphs=font.getGlyphSet();bounds={};horizontal={}
@@ -25,7 +26,7 @@ canvas=source[source.index('pub(crate) static mut FONT'):source.index('fn save('
 draw=source[source.index('fn materials('):source.index('pub fn render()')]
 render=source[source.index('pub fn render()'):source.index('pub fn menu()')]
 render='pub fn render(){let cv=Canvas::new().unwrap();STATE.with(|s|{'+render.split(' STATE.with(|s|{',1)[1]
-modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['sorting','binding_model','model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications'])
+modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['sorting','binding_model','text_cache','material_cache','model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications'])
 stub=r'''
 
 extern crate alloc;extern crate self as forge;
@@ -76,7 +77,7 @@ mod text_data{pub fn init(){}pub fn description(k:u8,id:u16,l:usize)->&'static s
 mod native_badges{pub struct Marker{pub x:f32,pub y:f32}pub fn available()->bool{false}pub fn markers(_: &super::List,_:u32)->Vec<Marker>{vec![]}}
 mod game_menu{pub fn visible(_:u32)->bool{false}}
 mod sound{pub enum Cue{Open}pub fn cue(_:Cue){}}use sound::Cue;
-struct State{sort:Option<sorting::Dialog>,installed:bool,loaded:bool,game_ready:bool,base:u32,mode:u8,list:List,stock:[u32;4096],stock_ready:bool,aggregate:interaction::AggregateFocus,selected:usize,focus:interaction::Focus,preview:bool,preview_panel:usize,preview_clock:f32,frozen:Option<Recipe>,detail_page:usize,tab:usize,status:u8,notices:notifications::Queue,notice_demo:Option<notifications::Demo>,notice_test_case:usize}
+struct State{sort:Option<sorting::Dialog>,installed:bool,loaded:bool,game_ready:bool,base:u32,mode:u8,list:List,stock:[u32;4096],stock_ready:bool,material_cache:material_cache::Cache,aggregate:interaction::AggregateFocus,selected:usize,focus:interaction::Focus,preview:bool,preview_panel:usize,preview_clock:f32,frozen:Option<Recipe>,detail_page:usize,tab:usize,status:u8,notices:notifications::Queue,notice_demo:Option<notifications::Demo>,notice_test_case:usize}
 impl State{fn active(&self)->Option<Recipe>{None}fn at_smithy(&self)->bool{false}}
 thread_local!{static STORE:RefCell<Option<State>>=const{RefCell::new(None)};}
 struct Shared;static STATE:Shared=Shared;impl Shared{fn with<R>(&self,f:impl FnOnce(&mut State)->R)->R{STORE.with(|v|f(v.borrow_mut().as_mut().unwrap()))}}
@@ -87,7 +88,7 @@ fn main(){
  let r=g::RECIPES.iter().find(|r|r.kind==1&&name(**r,0).contains("Rathalos")).copied().unwrap_or(g::RECIPES[0]);list.slots[0]=Some(model::Entry{recipe:r,ready:None});
  let mut stock=[99;4096];stock[r.materials[0].id as usize]=0;
  let frozen=g::RECIPES.iter().find(|r|r.kind==7).copied();
- let mut s=State{sort:None,installed:true,loaded:true,game_ready:true,base:0,mode:2,list,stock,stock_ready:true,aggregate:Default::default(),selected:0,focus:Default::default(),preview:false,preview_panel:0,preview_clock:0.,frozen,detail_page:0,tab:0,status:0,notices:notifications::Queue::default(),notice_demo:None,notice_test_case:2};
+ let mut s=State{sort:None,installed:true,loaded:true,game_ready:true,base:0,mode:2,list,stock,stock_ready:true,material_cache:Default::default(),aggregate:Default::default(),selected:0,focus:Default::default(),preview:false,preview_panel:0,preview_clock:0.,frozen,detail_page:0,tab:0,status:0,notices:notifications::Queue::default(),notice_demo:None,notice_test_case:2};
  match screen{"sort-primary"=>s.sort=Some(sorting::Dialog::default()),"sort-secondary"=>s.sort=Some(sorting::Dialog{secondary:true,criterion:1,..Default::default()}),"sort-wait"=>s.sort=Some(sorting::Dialog{secondary:true,criterion:1,message:1,..Default::default()}),"register"=>{s.mode=1;s.selected=7},"register-filled"=>s.mode=1,"materials"=>s.tab=1,"inspect"=>s.focus.material=true,"skills"=>s.detail_page=1,"confirm"=>s.mode=4,"done"=>s.mode=5,"overwrite"=>s.mode=3,"quick-remove"=>s.mode=8,"notice"=>{s.mode=0;s.notices.push(r);},"notice-test"=>start_notice_demo(&mut s),"weapon"=>s.selected=2,"category"=>{if let Some(r)=g::RECIPES.iter().find(|r|r.group>0){s.list.slots[0]=Some(model::Entry{recipe:*r,ready:None})}},_=>()}
  if screen=="materials-long"{let r=*g::RECIPES.iter().find(|r|r.kind==9&&r.id==51&&r.materials.iter().any(|m|g::ITEMDATA.get(m.id as usize*2).is_some_and(|v|v[0]=="Gore Magala Feeler+"))).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});s.stock.fill(0);s.tab=1;}
  if screen=="braces"{let r=*g::RECIPES.iter().find(|r|r.kind==3&&r.id==3&&r.level==0).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
@@ -103,7 +104,9 @@ import os
 env=os.environ.copy();env['WISHLIST_SRC']=(ROOT/'src').as_posix()
 subprocess.run(['rustc','+nightly','--edition','2024',str(OUT/'capture.rs'),'-Awarnings','-o',str(OUT/'capture.exe')],env=env,check=True)
 sprite_source=(ROOT/'src/icons_generated.rs').read_text(encoding='utf-8');sprites=[tuple(map(int,m)) for m in re.findall(r'Sprite\{x:(\d+),y:(\d+),w:(\d+),h:(\d+)\}',sprite_source)]
-atlas=Image.frombytes('RGBA',(2048,1024),(ROOT/'assets/wishlist-atlas.rgba').read_bytes())
+atlas_dir=ROOT/('assets/low-memory' if LOW_MEMORY else 'assets/hd')
+atlas_meta=json.loads((atlas_dir/'manifest.json').read_text())
+atlas=Image.frombytes('RGBA',(atlas_meta['width'],atlas_meta['height']),(atlas_dir/'wishlist-atlas.rgba').read_bytes())
 def color(c):return (c&255,c>>8&255,c>>16&255,c>>24&255)
 def paint(commands,width=1280,height=720):
  im=Image.new('RGBA',(width,height),'#515e51');clips=[]
@@ -131,7 +134,9 @@ def paint(commands,width=1280,height=720):
    x,y,size,c,text=a;f=ImageFont.truetype(str(ROOT/'assets/languages/font.shared.otf'),max(1,round(size*1000/denom)))
    d.text((x,y),text,font=f,fill=color(c))
   elif typ=='icon':
-   tile,x,y,w,h,c,flip=a;sx,sy,sw,sh=sprites[tile];pic=atlas.crop((sx,sy,sx+sw,sy+sh)).resize((max(1,round(w)),max(1,round(h))),Image.Resampling.LANCZOS)
+   tile,x,y,w,h,c,flip=a;sx,sy,sw,sh=sprites[tile];size=(max(1,round(w)),max(1,round(h)))
+   if LOW_MEMORY:pic=atlas.transform(size,Image.Transform.AFFINE,(sw*.5/size[0],0,sx*.5,0,sh*.5/size[1],sy*.5),Image.Resampling.BILINEAR)
+   else:pic=atlas.crop((sx,sy,sx+sw,sy+sh)).resize(size,Image.Resampling.LANCZOS)
    if flip:pic=pic.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
    pic=ImageChops.multiply(pic,Image.new('RGBA',pic.size,color(c)));layer.alpha_composite(pic,(round(x),round(y)))
   if clips:
@@ -286,7 +291,7 @@ if '--matrix' in __import__('sys').argv:
      if screen=='long-equipment' and percent==scales[lang%len(scales)] and (width,height)==sizes[lang%len(sizes)]:
       filename=f'matrix-{lang}.png';im=paint(commands,width,height);im.thumbnail((1280,900));im.save(OUT/filename);gallery.append((filename,lang,percent,width,height))
   print('UI matrix language',lang+1,'/ 9 completed',flush=True)
- report={'kind':'offline production draw-code regression, not a live-game test','cases':runs,'languages':9,'resolutions':sizes,'scales':scales,'screens':cases,'failure_count':len(failures),'failures':failures[:100]}
+ report={'profile':'LowMemory' if LOW_MEMORY else 'HD','kind':'offline production draw-code regression, not a live-game test','cases':runs,'languages':9,'resolutions':sizes,'scales':scales,'screens':cases,'failure_count':len(failures),'failures':failures[:100]}
  (OUT/'regression-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
  cards=''.join(f'<section><h2>{html.escape(language_name)} · {percent}% · {width}×{height}</h2><img src="{filename}" loading="lazy"></section>' for filename,lang,percent,width,height in gallery for language_name in [['English','简体中文','繁體中文','日本語','한국어','Deutsch','Français','Italiano','Español'][lang]])
  (OUT/'regression-gallery.html').write_text('<!doctype html><meta charset="utf-8"><title>Wishlist regression previews</title><style>body{background:#182020;color:#eee;font:16px sans-serif;margin:32px}section{margin:30px 0}img{max-width:100%;border:1px solid #697474}</style><h1>Wishlist UI regression previews</h1><p>Offline rendering of production draw code. These images do not prove native game hooks or live-game rendering. See regression-report.json and the live-game checklist.</p>'+cards,encoding='utf-8')

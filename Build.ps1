@@ -1,4 +1,4 @@
-param([switch]$SkipPackage, [switch]$Offline, [string]$ResourcePython = "python")
+param([switch]$SkipPackage, [switch]$Offline, [switch]$LowMemory, [string]$ResourcePython = "python")
 $ErrorActionPreference = 'Stop'
 Push-Location $PSScriptRoot
 $taskOldPath = $env:PATH
@@ -9,6 +9,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Name resource generation failed' }
     & $ResourcePython './tools/prepare_languages.py'
     if ($LASTEXITCODE -ne 0) { throw 'Language resource generation failed (fontTools is required when regenerating fonts).' }
+    & $ResourcePython './tools/prepare_low_memory.py'
+    if ($LASTEXITCODE -ne 0) { throw 'LowMemory resource generation failed (Pillow is required when regenerating icons).' }
+    & python './tools/prepare_hd_atlas.py'
+    if ($LASTEXITCODE -ne 0) { throw 'HD atlas cropping failed' }
     if ($Offline) { $env:CARGO_NET_OFFLINE = 'true' }
     $taskArmRoot = $env:DEVKITARM
     if (-not $taskArmRoot -and $env:DEVKITPRO) { $taskArmRoot = Join-Path $env:DEVKITPRO 'devkitARM' }
@@ -23,8 +27,13 @@ try {
         $taskPython = Get-Command python -ErrorAction SilentlyContinue
         if (-not $taskPython) { $taskPython = Get-Command python3 -ErrorAction SilentlyContinue }
         if (-not $taskPython) { throw 'Python 3 is required for packaging. Use -SkipPackage to build only.' }
-        & $taskPython.Source './tools/package.py'
-        if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
+        # Both releases share the NRO. A normal build leaves both ZIPs in dist.
+        if (-not $LowMemory) {
+            & $taskPython.Source './tools/package.py'
+            if ($LASTEXITCODE -ne 0) { throw 'Standard packaging failed' }
+        }
+        & $taskPython.Source './tools/package.py' --low-memory
+        if ($LASTEXITCODE -ne 0) { throw 'LowMemory packaging failed' }
     }
 } finally {
     $env:PATH = $taskOldPath

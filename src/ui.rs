@@ -12,7 +12,7 @@ const BODY:f32=25.;
 // Existing HD atlas art: equipment list, material container, decoration.
 const SORT_ORDER_ICON:usize=36;const SORT_STOCK_ICON:usize=23;const SORT_DECORATION_ICON:usize=44;
 pub(crate) fn push_binding_font()->bool{if let Some(f)=unsafe{FONT}{imgui::push_font(&f,Some(18.));true}else{false}}
-pub fn init(){crate::language_ui::init();}
+pub fn init(){crate::text_cache::clear();crate::language_ui::init();}
 fn table_name(table:u8,index:usize,lang:usize)->String{crate::name_data::get(table,index,lang).into()}
 pub fn name(r:Recipe,lang:usize)->String{match r.kind{
  1..=5=>table_name(2,r.id as usize*10+r.kind as usize-1,lang),
@@ -69,17 +69,8 @@ impl Canvas{
  }
  fn box_text(&self,x:f32,y:f32,w:f32,h:f32,size:f32,color:u32,text:&str,center:bool){
   let width=self.measure(size,text);let pixels=((self.pixels(size)*(w/width.max(w))+0.0001) as u32).max(1) as f32;let fitted=pixels/self.scale;
-  let fitted_width=self.measure(fitted,text).min(w);
-  let mut top=f32::MAX;let mut bottom=f32::MIN;let mut left=f32::MAX;let mut right=f32::MIN;let mut pen=0.;
-  if let Some(font)=unsafe{FONT}{unsafe{
-   let baked=forge::sys::imgui::ImFont_GetFontBaked(font.raw(),pixels,1.);
-   if !baked.is_null(){for ch in text.chars(){
-    let glyph=forge::sys::imgui::ImFontBaked_FindGlyph(baked,u16::try_from(ch as u32).unwrap_or(0xfffd));
-    if !glyph.is_null(){if (*glyph).Y1>(*glyph).Y0{top=top.min((*glyph).Y0/self.scale);bottom=bottom.max((*glyph).Y1/self.scale);left=left.min((pen+(*glyph).X0)/self.scale);right=right.max((pen+(*glyph).X1)/self.scale);}pen+=(*glyph).AdvanceX;}
-   }}
-  }}
-  if !top.is_finite()||!bottom.is_finite()||top>bottom{top=0.;bottom=pixels/self.scale;}
-  if !left.is_finite()||!right.is_finite()||left>right{left=0.;right=fitted_width;}
+  let metrics=self.metrics(fitted,text);let fitted_width=(metrics.width/self.scale).min(w);
+  let [left,right,top,bottom]=metrics.ink.map(|b|b.map(|n|n/self.scale)).unwrap_or([0.,fitted_width,0.,pixels/self.scale]);
   let tx=if center{x+w*0.5-(left+right)*0.5}else{x};let ty=y+h*0.5-(top+bottom)*0.5;
   self.draw.push_clip_rect(self.p(x,y),self.p(x+w,y+h),true);
   if let Some(font)=unsafe{FONT}{self.draw.add_text_with_font(&font,pixels,self.p(tx,ty),color,text)}else{self.draw.add_text(self.p(tx,ty),color,text)}
@@ -107,15 +98,21 @@ impl Canvas{
  fn measure(&self,size:f32,text:&str)->f32{
   // PushFont/CalcTextSize applies Recomp's window/DPI scale a second time.
   // DrawList text takes an explicit pixel size, so use that same baked font here.
-  let pixels=self.pixels(size);let mut line=0_f32;let mut width=0_f32;
-  if let Some(font)=unsafe{FONT}{unsafe{
-   let baked=forge::sys::imgui::ImFont_GetFontBaked(font.raw(),pixels,1.);
-   if !baked.is_null(){for ch in text.chars(){if ch=='\n'{width=width.max(line);line=0.;continue}if ch=='\r'{continue}
-    let glyph=forge::sys::imgui::ImFontBaked_FindGlyph(baked,u16::try_from(ch as u32).unwrap_or(0xfffd));
-    if !glyph.is_null(){line+=(*glyph).AdvanceX;}
-   }return width.max(line)/self.scale}
-  }}
-  pixels*text.chars().count() as f32*0.5/self.scale
+  self.metrics(size,text).width/self.scale
+ }
+ fn metrics(&self,size:f32,text:&str)->crate::text_cache::Metrics{
+  let pixels=self.pixels(size);let font=unsafe{FONT};let key=crate::text_cache::MetricKey{font:font.map_or(0,|f|f.raw() as usize),pixels:pixels as u32};
+  crate::text_cache::metrics(key,text,||{
+   let mut line=0_f32;let mut width=0_f32;let mut bounds=[f32::MAX,f32::MIN,f32::MAX,f32::MIN];let mut pen=0.;
+   if let Some(font)=font{unsafe{
+    let baked=forge::sys::imgui::ImFont_GetFontBaked(font.raw(),pixels,1.);
+    if !baked.is_null(){for ch in text.chars(){
+     if ch=='\n'{width=width.max(line);line=0.;}
+     let glyph=forge::sys::imgui::ImFontBaked_FindGlyph(baked,u16::try_from(ch as u32).unwrap_or(0xfffd));
+     if !glyph.is_null(){let g=&*glyph;if g.Y1>g.Y0{bounds[0]=bounds[0].min(pen+g.X0);bounds[1]=bounds[1].max(pen+g.X1);bounds[2]=bounds[2].min(g.Y0);bounds[3]=bounds[3].max(g.Y1);}pen+=g.AdvanceX;if ch!='\n'&&ch!='\r'{line+=g.AdvanceX;}}
+    }let ink=(bounds.iter().all(|v|v.is_finite())&&bounds[0]<=bounds[1]&&bounds[2]<=bounds[3]).then_some(bounds);return crate::text_cache::Metrics{width:width.max(line),ink}}
+   }}crate::text_cache::Metrics{width:pixels*text.chars().count() as f32*0.5,ink:None}
+  })
  }
  fn box_bold(&self,x:f32,y:f32,w:f32,h:f32,size:f32,color:u32,text:&str,center:bool){
   let offset=0.5/self.scale;self.box_text(x-offset,y,w,h,size,color,text,center);self.box_text(x+offset,y,w,h,size,color,text,center);
@@ -150,6 +147,8 @@ impl Canvas{
   for (i,n) in sharp.iter().enumerate(){let width=usable*(*n as f32/450.);if width>0.{self.rect(at,top,width.min((left+usable-at).max(0.)),8.,colors[i]);at+=width;}}
  }
  fn paragraph(&self,x:f32,y:f32,w:f32,h:f32,size:f32,color:u32,text:&str){
+  let key=crate::text_cache::LayoutKey{font:unsafe{FONT}.map_or(0,|f|f.raw() as usize),scale:self.scale.to_bits(),width:w.to_bits(),height:h.to_bits(),size:size.to_bits()};
+  crate::text_cache::paragraph(key,text,||{
   let layout=|size:f32|{let mut lines=Vec::new();let mut line=String::new();
    for paragraph in text.split('\n'){for word in paragraph.split_whitespace(){
     let candidate=if line.is_empty(){String::from(word)}else{format!("{} {}",line,word)};
@@ -159,9 +158,12 @@ impl Canvas{
    }if !line.is_empty(){lines.push(core::mem::take(&mut line));}}lines};
   let mut size=size;let mut lines=layout(size);
   while lines.len() as f32*size*1.3>h&&size>15.{size-=1.;lines=layout(size);}
+  crate::text_cache::Layout{size,lines}
+  },|layout|{
   self.draw.push_clip_rect(self.p(x,y),self.p(x+w,y+h),true);
-  for (i,line) in lines.iter().enumerate(){self.text(x,y+i as f32*size*1.3,w,size,color,line);}
+  for (i,line) in layout.lines.iter().enumerate(){self.text(x,y+i as f32*layout.size*1.3,w,layout.size,color,line);}
   self.draw.pop_clip_rect();
+  });
  }
  fn wrap(&self,x:f32,y:f32,width:f32,size:f32,color:u32,text:&str)->f32{
   let mut line=String::new();let mut py=y;
@@ -236,7 +238,7 @@ fn events(events:u32){
   if s.tab==0&&events&c::DETAIL!=0{s.detail_page=1-s.detail_page;sound::cue(Cue::Tab);}
   if s.mode==2&&events&(c::TAB|c::TAB_PREV|c::TAB_NEXT)!=0{s.tab=1-s.tab;s.aggregate=crate::interaction::AggregateFocus::default();s.focus.material=false;s.focus.index=0;sound::cue(Cue::Tab);return 0}
   if s.mode==2&&s.tab==1{
-   let totals=s.list.ordered_totals(&s.stock,s.stock_ready);s.aggregate.material=s.aggregate.material.min(totals.len().saturating_sub(1));
+   s.material_cache.refresh(&s.list,&s.stock,s.stock_ready,g::PROVISIONS);let totals=s.material_cache.totals();s.aggregate.material=s.aggregate.material.min(totals.len().saturating_sub(1));
    let d=if events&c::UP!=0{-1}else if events&c::DOWN!=0{1}else{0};let page=if events&c::PREV!=0{-1}else if events&c::NEXT!=0{1}else{0};
    s.aggregate.material_step(totals.len(),d,page);
    if page!=0{sound::cue(Cue::Page);}else if d!=0{sound::cue(Cue::Cursor);}return 0
@@ -259,8 +261,8 @@ fn keyboard()->u32{let mut e=0;for (key,event) in [(Key::Enter,c::ACCEPT),(Key::
 #[cfg(not(feature="keyboard-input"))]
 fn keyboard()->u32{0}
 fn materials(cv:&Canvas,s:&State,r:Recipe,x:f32,y:f32,w:f32){
- let lang=s.list.language;cv.section(x,y,w,l::MATERIALS[lang]);let mut py=y+40.;let step=if r.group>0&&r.totals().len()>3{35.}else{46.};
- for (i,m) in r.totals().iter().enumerate(){let owned=s.stock[m.id as usize];let good=s.stock_ready&&owned>=m.count;
+ let lang=s.list.language;let totals=r.totals();cv.section(x,y,w,l::MATERIALS[lang]);let mut py=y+40.;let step=if r.group>0&&totals.len()>3{35.}else{46.};
+ for (i,m) in totals.iter().enumerate(){let owned=s.stock[m.id as usize];let good=s.stock_ready&&owned>=m.count;
   if s.focus.material&&s.focus.index==i{cv.selection(x,py-3.,w,39_f32.min(step-3.),true,false);}
   let height=39_f32.min(step-3.);let row_y=py-3.;
   let (tile,tint)=crate::icons::material(m.id);cv.icon(tile,x+4.,row_y+(height-27.)*0.5,27.,tint);
@@ -278,7 +280,7 @@ fn materials(cv:&Canvas,s:&State,r:Recipe,x:f32,y:f32,w:f32){
   let points=format!("{} pt",r.points);let points_width=cv.measure(BODY,&points).min(100.);cv.box_text(x+w-points_width,row_y,points_width,height,BODY,WHITE,&points,false);
  }
 
- if s.focus.material{if let Some(m)=r.totals().get(s.focus.index){
+ if s.focus.material{if let Some(m)=totals.get(s.focus.index){
   cv.rect(x,465.,w,140.,INSET);cv.line(x,465.,x+w,465.,RULE);let (tile,tint)=crate::icons::material(m.id);cv.icon(tile,x+10.,507.,44.,tint);
   cv.fit(x+10.,471.,w-20.,26.,GOLD,&item(m.id,lang));
   if let Some(data)=crate::icons::ITEMS.get(m.id as usize){cv.wrap(x+8.,555.,65.,20.,crate::presentation::rarity(data.2 as i16),&format!("{} {}",l::RARITY[lang],data.2));}
@@ -288,7 +290,7 @@ fn materials(cv:&Canvas,s:&State,r:Recipe,x:f32,y:f32,w:f32){
  }}
 }
 fn aggregate(cv:&Canvas,s:&State)->Option<Recipe>{
- let lang=s.list.language;let totals=s.list.ordered_totals(&s.stock,s.stock_ready);let cursor=s.aggregate.material.min(totals.len().saturating_sub(1));
+ let lang=s.list.language;let totals=s.material_cache.totals();let cursor=s.aggregate.material.min(totals.len().saturating_sub(1));
  cv.line(542.,172.,542.,606.,RULE);
  cv.section(146.,168.,380.,l::MATERIALS[lang]);cv.section(561.,168.,367.,l::TITLE[lang]);
  let start=cursor/8*8;
@@ -308,17 +310,17 @@ fn aggregate(cv:&Canvas,s:&State)->Option<Recipe>{
  let (tile,tint)=crate::icons::material(material.id);cv.icon(tile,155.,549.,32.,tint);
  if let Some(data)=crate::icons::ITEMS.get(material.id as usize){cv.fit(404.,518.,113.,18.,crate::presentation::rarity(data.2 as i16),&format!("{} {}",l::RARITY[lang],data.2));}
  cv.paragraph(197.,545.,320.,60.,23.,WHITE,&crate::name_data::material_description(material.id,lang));
- let related=s.list.requiring_material(material.id);
+ let related=s.material_cache.related(material.id);let count=related.count_ones() as usize;
  // Passive list: every related entry stays visible, with two columns for large lists.
- let columns=if related.len()>16{2}else{1};let rows=related.len().div_ceil(columns).max(1);let row_height=(355./rows as f32).min(58.);let column_width=367./columns as f32;let icon_size=(row_height-2.).min(30.);let top=225.;
- for (index,slot) in related.iter().enumerate(){
-  let Some(entry)=s.list.slots[*slot] else{continue};let x=561.+(index/rows) as f32*column_width;let y=top+(index%rows) as f32*row_height;let font_size=BODY.min(row_height-2.);let label=name(entry.recipe,lang);
+ let columns=if count>16{2}else{1};let rows=count.div_ceil(columns).max(1);let row_height=(355./rows as f32).min(58.);let column_width=367./columns as f32;let icon_size=(row_height-2.).min(30.);let top=225.;
+ for (index,slot) in (0..48).filter(|slot|related&(1u64<<slot)!=0).enumerate(){
+  let Some(entry)=s.list.slots[slot] else{continue};let x=561.+(index/rows) as f32*column_width;let y=top+(index%rows) as f32*row_height;let font_size=BODY.min(row_height-2.);let label=name(entry.recipe,lang);
   let text_width=cv.measure(font_size,&label).min(column_width-icon_size-18.);let group=x+(column_width-icon_size-9.-text_width)*0.5;
   cv.gear(entry.recipe,group,y,icon_size);cv.box_text(group+icon_size+9.,y,text_width,icon_size,font_size,WHITE,&label,false);
   if row_height>=42.{cv.line(x+9.,y+icon_size+12.,x+column_width-9.,y+icon_size+12.,RULE);}
  }
 
- related.first().and_then(|slot|s.list.slots[*slot]).map(|e|e.recipe)
+ (0..48).find(|slot|related&(1u64<<slot)!=0).and_then(|slot|s.list.slots[slot]).map(|e|e.recipe)
 
 }
 fn draw_notice(cv:&Canvas,r:Recipe,lang:usize,elapsed:f32,slot:usize){
@@ -426,13 +428,14 @@ pub fn render(){
  STATE.with(|s|{
   if !s.installed||!s.loaded||!s.game_ready{return}crate::icons::set_layout(s.list.layout);let lang=s.list.language;
   if s.mode==0{
-   if let Some(view)=crate::hud_layout::right_top(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,crate::hud_layout::current(imgui::get_io().DeltaTime)){let native_cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw};for marker in crate::native_badges::markers(&s.list,s.base){native_cv.pin(marker.x,marker.y);}
+   if let Some(view)=crate::hud_layout::right_top(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,crate::hud_layout::current(s.base)){let native_cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw};for marker in crate::native_badges::markers(&s.list,s.base){native_cv.pin(marker.x,marker.y);}
    if s.at_smithy()||crate::game_menu::visible(s.base){let y=if crate::game_menu::visible(s.base){398.}else{496.};native_cv.shortcut_bar(1102.,y,s.list.pad_bindings[0],l::TITLE[lang]);}if let Some(r)=s.active(){let registered=s.list.registered(r).is_some();native_cv.shortcut_bar(1102.,528.,s.list.pad_bindings[1],if registered{l::QUICK_REMOVE[lang]}else{l::REGISTER[lang]});}}
 
 
    for (slot,n) in s.notices.visible(){draw_notice(&cv,n.recipe,lang,crate::presentation::NOTICE_DURATION-n.seconds,slot);}
    s.notices.advance(imgui::get_io().DeltaTime);return
   }
+  s.material_cache.refresh(&s.list,&s.stock,s.stock_ready,g::PROVISIONS);
   if s.mode==8{confirmation(&cv,s);return}
   if s.mode==7{draw_notice_demo(&cv,s);return}
   if s.preview&&s.mode==6{if let Some(r)=s.frozen{draw_notice(&cv,r,lang,s.preview_clock,0);}s.preview_clock+=imgui::get_io().DeltaTime.clamp(0.,0.1);if s.preview_clock>crate::presentation::NOTICE_DURATION+0.6{s.preview_clock=0.;}cv.text(350.,40.,600.,18.,GOLD,&format!("{}    L / R  {}/8   B / Esc",l::PREVIEW[lang],s.preview_panel+1));return}
@@ -449,7 +452,7 @@ pub fn render(){
    cv.section(146.,198.,320.,l::TITLE[lang]);let start=s.selected/8*8;
    for i in start..start+8{let y=230.+(i-start) as f32*42.;let focus=i==s.selected;
     cv.selection(146.,y,320.,38.,focus&&!s.focus.material,i%2==1);
-    if let Some(r)=if focus{selected}else{s.list.slots[i].map(|e|e.recipe)}{let color=if !s.stock_ready{WHITE}else if r.ready(&s.stock,g::PROVISIONS){GREEN}else{RED};cv.icon_plate(154.,y+4.,30.);cv.gear(r,157.,y+7.,24.);cv.box_text(196.,y,260.,38.,BODY,color,&name(r,lang),false);}else{cv.box_text(159.,y,296.,38.,BODY,MUTED,l::EMPTY[lang],false);}
+    if let Some(r)=if focus{selected}else{s.list.slots[i].map(|e|e.recipe)}{let color=if !s.stock_ready{WHITE}else if s.material_cache.ready(i,r).unwrap_or_else(||r.ready(&s.stock,g::PROVISIONS)){GREEN}else{RED};cv.icon_plate(154.,y+4.,30.);cv.gear(r,157.,y+7.,24.);cv.box_text(196.,y,260.,38.,BODY,color,&name(r,lang),false);}else{cv.box_text(159.,y,296.,38.,BODY,MUTED,l::EMPTY[lang],false);}
    }
    cv.pager(306.,580.,s.selected/8+1,6);
    cv.line(482.,172.,482.,605.,RULE);

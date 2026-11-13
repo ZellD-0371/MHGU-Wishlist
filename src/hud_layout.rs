@@ -1,38 +1,29 @@
-//! Recomp picture and right/top menu anchors, separate from the plugin's UI scale.
-#[derive(Clone,Copy,Default)]
-pub struct Settings{pub aspect:f32,pub anchor:u8}
-fn number(text:&str)->Option<f32>{
- let mut n=0.;let mut fraction=0.;let mut digits=false;
- for b in text.trim().bytes(){if b==b'.'&&fraction==0.{fraction=1.;continue}if !b.is_ascii_digit(){return None}digits=true;let d=(b-b'0') as f32;if fraction==0.{n=n*10.+d}else{fraction*=10.;n+=d/fraction}}
- (digits&&n.is_finite()).then_some(n)
-}
-pub fn parse(text:&str)->Settings{
- let mut out=Settings::default();let mut display=false;
- for raw in text.lines(){let line=raw.trim().trim_start_matches('\u{feff}');if line.starts_with('['){display=line.eq_ignore_ascii_case("[Display]");continue}if !display{continue}
-  let Some((key,value))=line.split_once('=') else{continue};let value=value.split([';','#']).next().unwrap_or("").trim();
-  if key.trim().eq_ignore_ascii_case("UIAnchor"){out.anchor=if value.eq_ignore_ascii_case("Edges"){3}else if value=="21:9"||value=="2"{1}else if value=="32:9"||value=="3"{2}else{0};}
-  if key.trim().eq_ignore_ascii_case("AspectRatio"){let value=value.replace('/',":");let ratio=if let Some((a,b))=value.split_once(':'){number(a).zip(number(b)).map(|(a,b)|a/b)}else{number(&value)};if let Some(r)=ratio{if r.is_finite()&&(0.5..=10.).contains(&r){out.aspect=r}}}
- }out
-}
-pub fn right_top(width:f32,height:f32,settings:Settings)->Option<crate::presentation::Viewport>{
+//! Native right/top HUD anchor from the active render picture, without host files.
+/// Render width/height and the native HUD's virtual reference width.
+#[derive(Clone,Copy,Debug)]
+pub struct HudSize{pub render_width:u32,pub render_height:u32,pub ui_width:u32}
+pub fn right_top(width:f32,height:f32,hud:Option<HudSize>)->Option<crate::presentation::Viewport>{
  crate::presentation::viewport(width,height,100)?;
- let mut aspect=if settings.aspect>0.{settings.aspect}else{width/height};
- if aspect<1.6-0.005{aspect=1.6}if (aspect-16./9.).abs()<0.01{aspect=16./9.}
- let pw=width.min(height*aspect);let ph=pw/aspect;let px=(width-pw)*0.5;let py=(height-ph)*0.5;
- if aspect<16./9.{return Some(crate::presentation::Viewport{scale:pw/1280.,ox:px,oy:py})}
- let anchor=match settings.anchor{1=>21./9.,2=>32./9.,3=>aspect,_=>16./9.}.min(aspect);
- let scale=ph/720.;let right=px+(pw+ph*anchor)*0.5;
- Some(crate::presentation::Viewport{scale,ox:right-1280.*scale,oy:py})
+ if let Some(HudSize{render_width:rw,render_height:rh,ui_width:uw})=hud{
+  if (64..=16384).contains(&rw)&&(64..=16384).contains(&rh)&&(1280..=7200).contains(&uw){
+   let aspect=rw as f32/rh as f32;
+   let ph=height.min(width/aspect);let pw=ph*aspect;
+   let scale=(ph/720.).min(pw/1280.);
+   return Some(crate::presentation::Viewport{scale,ox:(width+uw as f32*scale)*0.5-1280.*scale,oy:(height-ph)*0.5})
+  }
+ }
+ // Native 16:9 HUD fallback while the renderer is not ready.
+ let scale=(width/1280.).min(height/720.);
+ if width/height>=16./9.-0.01{Some(crate::presentation::Viewport{scale,ox:(width-1280.*scale)*0.5,oy:(height-720.*scale)*0.5})}
+ else{Some(crate::presentation::Viewport{scale:width/1280.,ox:0.,oy:(height-height.min(width/1.6))*0.5})}
 }
 #[cfg(target_arch="arm")]
-pub fn current(dt:f32)->Settings{unsafe{
- use forge::sys::imgui as sys;
- static mut SETTINGS:Settings=Settings{aspect:0.,anchor:0};static mut AGE:f32=2.;
- AGE+=dt.clamp(0.,0.1);if AGE<1.{return SETTINGS}AGE=0.;
- let file=sys::igImFileOpen(c"mhgurecomp.ini".as_ptr(),c"rb".as_ptr());if file.is_null(){return SETTINGS}
- let mut data=[0u8;32768];let len=sys::igImFileRead(data.as_mut_ptr().cast(),1,data.len() as u64,file);sys::igImFileClose(file);
- if len<(data.len() as u64){if let Ok(text)=core::str::from_utf8(&data[..len as usize]){SETTINGS=parse(text);}}
- SETTINGS
-}}
+pub fn current(base:u32)->Option<HudSize>{
+ if !crate::native::valid(base)||base.checked_add(0x212699c).is_none(){return None}
+ let render=unsafe{crate::native::rd(base+0x2126998)};
+ if !crate::native::valid(render)||render&3!=0||render.checked_add(0x44bacc).is_none(){return None}
+ if unsafe{crate::native::rd(render)}!=base+0x1754a58{return None}
+ Some(unsafe{HudSize{render_width:crate::native::rd(render+0x44bac0),render_height:crate::native::rd(render+0x44bac4),ui_width:crate::native::rd(render+0x44bac8)}})
+}
 #[cfg(not(target_arch="arm"))]
-pub fn current(_:f32)->Settings{Settings::default()}
+pub fn current(_:u32)->Option<HudSize>{None}

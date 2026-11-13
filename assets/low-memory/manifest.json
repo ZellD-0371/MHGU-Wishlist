@@ -1,0 +1,12 @@
+{
+  "profile": "LowMemory",
+  "source_sha256": "247b04198d3cb1d5c611d86198d2deb40b0770729fdf81988cf1334916e06f16",
+  "sha256": "043080aafb1d70e341b37822a2a1fb3cbd57045ef080869c45ea2d2ee1962d01",
+  "source_width": 2048,
+  "source_height": 1024,
+  "cropped_height": 704,
+  "width": 1024,
+  "height": 352,
+  "bytes": 1441792,
+  "sprites": 159
+}

@@ -158,6 +158,7 @@ fn recipe()->Recipe{Recipe{kind:2,id:4,materials:[Material{id:318,count:2},Mater
 
 #[path="../src/text_blob.rs"]mod text_blob;
 #[path="../src/language_pack.rs"]mod language_pack;
+#[path="language_test_source.rs"]mod language_test_source;
 #[path="../src/name_data.rs"]mod name_data;
 mod material_text_source{include!("../src/item_text_generated.rs");}
 #[test]fn external_names_preserve_all_source_rows_and_nine_languages(){
@@ -289,19 +290,15 @@ fn tick_queue(q:&mut notifications::Queue,count:usize){for _ in 0..count{q.advan
  }
 }
 #[path="../src/hud_layout.rs"]mod hud_layout;
-#[test]fn native_hud_picture_and_anchor_settings(){
- use hud_layout::{Settings as S,right_top as map};
- let p=map(2560.,1600.,S::default()).unwrap();assert_eq!((p.scale,p.ox,p.oy),(2.,0.,0.));
- let p=map(2560.,1600.,S{aspect:16./9.,anchor:0}).unwrap();assert_eq!((p.scale,p.ox,p.oy),(2.,0.,80.));
- let a=map(3440.,1440.,S::default()).unwrap();let b=map(3440.,1440.,S{aspect:0.,anchor:3}).unwrap();assert_eq!(b.scale,2.);assert_eq!(b.ox,880.);assert_eq!(a.ox,440.);
- let p=map(1024.,768.,S::default()).unwrap();assert_eq!(p.scale,0.8);assert_eq!(p.oy,64.);
- for(w,h)in[(1920.,1080.),(2560.,1600.),(3440.,1440.),(5120.,1440.),(1024.,768.)]{for anchor in 0..4{let p=map(w,h,S{aspect:0.,anchor}).unwrap();let right=p.ox+1280.*p.scale;assert!(right<=w+0.01&&right>0.);}}
- assert!(map(0.,720.,S::default()).is_none());
-}
-#[test]fn native_hud_reads_only_display_config(){
- let s=hud_layout::parse("[Other]\nUIAnchor=Edges\n[Display]\nAspectRatio=16:9\nUIAnchor=21:9 ; test\n");assert_eq!(s.aspect,16./9.);assert_eq!(s.anchor,1);
- let s=hud_layout::parse("[Display]\nAspectRatio=Auto\nUIAnchor=Edges\n");assert_eq!(s.aspect,0.);assert_eq!(s.anchor,3);
- let s=hud_layout::parse("[Display]\nAspectRatio=NaN\n");assert_eq!(s.aspect,0.);
+#[test]fn native_hud_uses_runtime_picture_and_reference_width(){
+ use hud_layout::{HudSize as H,right_top as map};
+ let hud=|w,h,u|Some(H{render_width:w,render_height:h,ui_width:u});
+ let p=map(2560.,1600.,hud(2560,1600,1280)).unwrap();assert_eq!((p.scale,p.ox,p.oy),(2.,0.,0.));
+ let p=map(2560.,1600.,hud(1920,1080,1280)).unwrap();assert_eq!((p.scale,p.ox,p.oy),(2.,0.,80.));
+ let a=map(3440.,1440.,hud(3440,1440,1280)).unwrap();let b=map(3440.,1440.,hud(3440,1440,1720)).unwrap();assert_eq!(a.ox,440.);assert_eq!(b.ox,880.);
+ let p=map(1024.,768.,hud(1280,800,1280)).unwrap();assert!((p.scale-0.8).abs()<0.001);assert_eq!(p.oy,64.);
+ assert!(map(0.,720.,None).is_none());
+ for values in [(0,720,1280),(1280,0,1280),(1280,720,0),(u32::MAX,720,1280)]{let p=map(1920.,1080.,hud(values.0,values.1,values.2)).unwrap();assert_eq!((p.scale,p.ox,p.oy),(1.5,0.,0.));}
 }
 
 #[test]fn custom_bindings_round_trip_and_invalid_values_fall_back(){
@@ -435,25 +432,34 @@ fn display_ids(list:&List)->Vec<u16>{list.slots.iter().flatten().map(|e|e.recipe
 }
 
 fn language_files(language:usize,kind:usize)->Vec<u8>{let code=locales::CODES[language];std::fs::read(format!("assets/languages/{}.{}.bin",if kind==0{"names"}else{"text"},code)).unwrap()}
+#[test]fn compact_name_indexes_keep_only_nonempty_ids_in_all_nine_languages(){
+ let original=&include_bytes!("../assets/ui-names.bin")[..];let old_rows=u32::from_le_bytes(original[8..12].try_into().unwrap()) as usize;
+ for lang in 0..9{let data=language_files(lang,0);let count=u32::from_le_bytes(data[12..16].try_into().unwrap()) as usize;let mut expected=0;
+  for i in 0..old_rows{let key=u32::from_le_bytes(original[12+i*40..16+i*40].try_into().unwrap());if key>>16!=31&&!text_blob::get(original,(key>>16) as u8,key as u16,lang).is_empty(){expected+=1;}}
+  assert_eq!(count,expected);for row in data[16..16+count*8].chunks_exact(8){let at=u32::from_le_bytes(row[4..8].try_into().unwrap()) as usize;assert_ne!(data[at],0,"empty name rows should not be stored");}
+ }
+}
 #[test]fn single_language_packs_preserve_every_name_and_description_in_all_nine_languages(){
- for lang in 0..9{let pack=language_pack::Pack::prepare(lang,|kind|Ok(language_files(lang,kind))).unwrap();
+ for lang in 0..9{let mut pack=language_test_source::prepare(lang).unwrap();
   for (description,source) in [(false,&include_bytes!("../assets/ui-names.bin")[..]),(true,&include_bytes!("../assets/ui-text.bin")[..])]{
-   let single=language_files(lang,description as usize);assert_eq!(text_blob::single_language(&single),Some(lang));assert!(text_blob::valid(&single));
+   if !description{let single=language_files(lang,0);assert_eq!(text_blob::single_language(&single),Some(lang));assert!(text_blob::valid(&single));}
    let rows=u32::from_le_bytes(source[8..12].try_into().unwrap()) as usize;
    for i in 0..rows{let key=u32::from_le_bytes(source[12+i*40..16+i*40].try_into().unwrap());assert_eq!(pack.text(description,(key>>16) as u8,key as u16,lang),text_blob::get(source,(key>>16) as u8,key as u16,lang));}
-   assert_eq!(text_blob::get(&single,1,0,(lang+1)%9),"");
+   assert_eq!(pack.text(description,1,0,(lang+1)%9),"");
   }
   assert!(pack.bytes()<2*1024*1024); // one language only, not the original ~10 MiB corpus
  }
 }
 #[test]fn resource_staging_failure_keeps_previous_language_and_owned_text_valid(){
- let mut store=language_pack::Store::default();store.commit(language_pack::Pack::prepare(0,|kind|Ok(language_files(0,kind))).unwrap());
+ let mut store=language_pack::Store::default();store.commit(language_test_source::prepare(0).unwrap());
  let owned=store.text(false,1,2,0);assert_eq!(owned,"Book of Combos 1");
  for failure in 0..4{
-  let attempted=language_pack::Pack::prepare(4,|kind|{if failure==0&&kind==0||failure==1&&kind==1{return Err(())}let mut bytes=language_files(if failure==2{0}else{4},kind);if failure==3{bytes.truncate(20);}Ok(bytes)});
+  let mut names=language_files(if failure==2{0}else{4},0);let mut text=language_files(4,1);
+  match failure{0=>names.clear(),1=>text.clear(),3=>text.truncate(20),_=>()}
+  let attempted=language_pack::Pack::prepare(4,names,Box::new(language_test_source::Memory(text)));
   assert!(attempted.is_err());assert_eq!(store.active.as_ref().unwrap().language,0);assert_eq!(store.text(false,1,2,0),owned);
  }
- for lang in (0..9).cycle().take(90){let next=language_pack::Pack::prepare(lang,|kind|Ok(language_files(lang,kind))).unwrap();drop(store.commit(next));assert_eq!(store.active.as_ref().unwrap().language,lang);}
+ for lang in (0..9).cycle().take(90){let next=language_test_source::prepare(lang).unwrap();drop(store.commit(next));assert_eq!(store.active.as_ref().unwrap().language,lang);}
  assert_eq!(owned,"Book of Combos 1");assert!(!language_pack::matches(99,0,b""));assert!(!language_pack::matches(0,9,b""));
  assert_eq!(language_pack::crc32(b"123456789"),0xcbf43926);
 }
@@ -461,4 +467,31 @@ fn language_files(language:usize,kind:usize)->Vec<u8>{let code=locales::CODES[la
  let good=language_files(0,0);for end in [0,4,12,15,20,good.len()-1]{assert!(text_blob::single_language(&good[..end]).is_none());}
  let mut bad=good.clone();bad[8..12].copy_from_slice(&9u32.to_le_bytes());assert!(text_blob::single_language(&bad).is_none());
  bad=good.clone();bad[20..24].copy_from_slice(&0u32.to_le_bytes());assert!(text_blob::single_language(&bad).is_none());
+}
+
+#[path="../src/atlas.rs"]mod atlas;
+mod atlas_art{include!("../src/icons_generated.rs");}
+#[test]fn hd_and_low_memory_atlases_preserve_all_sprite_rectangles_and_reject_other_sizes(){
+ let hd_bytes=std::fs::metadata("assets/wishlist-atlas.rgba").unwrap().len();let low_bytes=std::fs::metadata("assets/low-memory/wishlist-atlas.rgba").unwrap().len();
+ let hd=atlas::layout(hd_bytes).unwrap();let low=atlas::layout(low_bytes).unwrap();
+ assert!(!hd.low_memory&&low.low_memory);assert_eq!((hd.width,hd.height),(2048,1024));assert_eq!((low.width,low.height),(1024,352));assert_eq!(low.uv_width,hd.uv_width);assert_eq!(low.uv_height,704);
+ for size in [0,1,low_bytes-1,low_bytes+1,hd_bytes-1,hd_bytes+1]{assert!(atlas::layout(size).is_none());}
+ for sprite in atlas_art::ART{
+  let x0=sprite.x as f32/low.uv_width as f32*low.width as f32;let y0=sprite.y as f32/low.uv_height as f32*low.height as f32;
+  let x1=(sprite.x+sprite.w) as f32/low.uv_width as f32*low.width as f32;let y1=(sprite.y+sprite.h) as f32/low.uv_height as f32*low.height as f32;
+  assert!((x0-sprite.x as f32*0.5).abs()<0.001&&(y0-sprite.y as f32*0.5).abs()<0.001);
+  assert!(x1<=low.width as f32&&y1<=low.height as f32);assert!((x1-x0-sprite.w as f32*0.5).abs()<0.001&&(y1-y0-sprite.h as f32*0.5).abs()<0.001);
+ }
+ assert_eq!(atlas_art::ART.len(),159);assert_eq!(hd_bytes,8388608);assert_eq!(low_bytes,1441792);
+ assert!(low_bytes*100/hd_bytes<=18);
+}
+#[test]fn cropped_hd_atlas_preserves_all_sprite_pixels_and_legacy_uv_coordinates(){
+ let original=std::fs::read("assets/wishlist-atlas.rgba").unwrap();let cropped=std::fs::read("assets/hd/wishlist-atlas.rgba").unwrap();let hd=atlas::layout(cropped.len() as u64).unwrap();
+ assert!(!hd.low_memory);assert_eq!((hd.width,hd.height,hd.uv_width,hd.uv_height),(2048,704,2048,704));assert_eq!(cropped.len(),5767168);assert_eq!(cropped,&original[..cropped.len()]);
+ assert!(original[cropped.len()+3..].iter().step_by(4).all(|alpha|*alpha==0));
+ for sprite in atlas_art::ART{assert!((sprite.x+sprite.w)<=hd.width&&(sprite.y+sprite.h)<=hd.height);
+  for row in sprite.y..sprite.y+sprite.h{let at=(row as usize*2048+sprite.x as usize)*4;let end=at+sprite.w as usize*4;assert_eq!(cropped[at..end],original[at..end]);}
+  for y in [sprite.y,sprite.y+sprite.h]{let normalized=y as f32/hd.uv_height as f32;assert!((normalized*hd.height as f32-y as f32).abs()<0.0001);}
+ }
+ for bad in [cropped.len()-1,cropped.len()+1]{assert!(atlas::layout(bad as u64).is_none());}
 }
