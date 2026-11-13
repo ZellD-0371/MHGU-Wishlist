@@ -1,6 +1,6 @@
 #![no_std]
 extern crate alloc;
-mod name_data;
+mod name_data;mod language;mod language_pack;mod language_ui;
 mod sorting;
 mod binding_model;mod bindings;
 mod hook_guard;
@@ -12,17 +12,17 @@ use forge::log::prelude::{info,error};
 #[derive(Clone,Copy)]
 struct Target{owner:u32,recipe:Recipe,cost:u32}
 struct State{
- sort:Option<sorting::Dialog>,settings_loaded:bool,settings_notice:u8,profile:Option<usize>,game_ready:bool,base:u32,installed:bool,input_ready:bool,list:List,loaded:bool,mode:u8,selected:usize,tab:usize,aggregate:interaction::AggregateFocus,preview_clock:f32,
+ pending_preferences:Option<List>,sort:Option<sorting::Dialog>,settings_loaded:bool,settings_notice:u8,profile:Option<usize>,game_ready:bool,base:u32,installed:bool,input_ready:bool,list:List,loaded:bool,mode:u8,selected:usize,tab:usize,aggregate:interaction::AggregateFocus,preview_clock:f32,
  target:Option<Target>,frozen:Option<Recipe>,stock:[u32;4096],stock_ready:bool,
  notices:notifications::Queue,notice_demo:Option<notifications::Demo>,notice_test_case:usize,cooldown:u32,timer:f32,events:u32,status:u8,preview:bool,preview_panel:usize,detail_page:usize,frozen_cost:u32,focus:interaction::Focus,
 }
 impl State{
- fn new()->Self{Self{sort:None,settings_loaded:false,settings_notice:0,profile:None,game_ready:false,base:0,installed:false,input_ready:false,list:List::default(),loaded:false,mode:0,selected:0,tab:0,aggregate:interaction::AggregateFocus::default(),preview_clock:0.,target:None,frozen:None,stock:[0;4096],stock_ready:false,notices:notifications::Queue::default(),notice_demo:None,notice_test_case:2,cooldown:180,timer:0.,events:0,status:0,preview:false,preview_panel:0,detail_page:0,frozen_cost:0,focus:interaction::Focus::default()}}
+ fn new()->Self{Self{pending_preferences:None,sort:None,settings_loaded:false,settings_notice:0,profile:None,game_ready:false,base:0,installed:false,input_ready:false,list:List::default(),loaded:false,mode:0,selected:0,tab:0,aggregate:interaction::AggregateFocus::default(),preview_clock:0.,target:None,frozen:None,stock:[0;4096],stock_ready:false,notices:notifications::Queue::default(),notice_demo:None,notice_test_case:2,cooldown:180,timer:0.,events:0,status:0,preview:false,preview_panel:0,detail_page:0,frozen_cost:0,focus:interaction::Focus::default()}}
  fn capture(&mut self,owner:u32,recipe:Recipe,cost:u32){if self.mode==0&&recipe.valid(){self.target=Some(Target{owner,recipe,cost});}}
  fn active(&self)->Option<Recipe>{self.target.filter(|t|native::visible(t.owner,self.base)).map(|t|t.recipe).or_else(||native_badges::selected_registered(&self.list,self.base).map(|(_,r)|r))}
  fn at_smithy(&self)->bool{self.active().is_some()||native_badges::smithy_visible(self.base)}
  fn open(&mut self,register:bool){
-  if !self.game_ready||self.profile.is_none()||!self.loaded||!self.input_ready{return}
+  if !self.game_ready||self.profile.is_none()||!self.loaded||!self.input_ready||crate::language::current().is_none(){return}
   self.sort=None;self.focus=interaction::Focus::default();self.preview=false;self.notice_demo=None;self.tab=0;self.aggregate=interaction::AggregateFocus::default();self.preview_clock=0.;self.status=0;self.detail_page=0;sound::request_open(self.list.open_sound);
   if register{if let Some(r)=self.active(){self.frozen=Some(r);self.frozen_cost=self.target.map_or(0,|t|t.cost);if let Some(slot)=self.list.registered(r){self.mode=8;self.selected=slot;self.focus.yes=false;}else{self.mode=1;self.selected=self.list.slots.iter().position(Option::is_none).unwrap_or(0)}}}else{self.frozen=None;self.mode=2;self.selected=0;}
  }

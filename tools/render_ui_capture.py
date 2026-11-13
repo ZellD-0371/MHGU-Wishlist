@@ -11,7 +11,7 @@ from fontTools.pens.boundsPen import BoundsPen
 
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'target/ui-steel-proof';OUT.mkdir(parents=True,exist_ok=True)
-font=TTFont(ROOT/'assets/NotoSansCJKkr-Regular.otf');cmap=font.getBestCmap();denom=font['hhea'].ascent-font['hhea'].descent
+font=TTFont(ROOT/'assets/languages/font.shared.otf');cmap=font.getBestCmap();denom=font['hhea'].ascent-font['hhea'].descent
 (OUT/'advances.bin').write_bytes(b''.join(struct.pack('<f',font['hmtx'][cmap[c]][0]/denom if c in cmap else .5) for c in range(65536)))
 glyphs=font.getGlyphSet();bounds={};horizontal={}
 for name in set(cmap.values()):
@@ -21,7 +21,7 @@ for name in set(cmap.values()):
 (OUT/'bounds.bin').write_bytes(b''.join(struct.pack('<2f',*bounds.get(cmap.get(c),(0.,0.))) for c in range(65536)))
 (OUT/'horizontal.bin').write_bytes(b''.join(struct.pack('<2f',*horizontal.get(cmap.get(c),(0.,0.))) for c in range(65536)))
 source=(ROOT/'src/ui.rs').read_text(encoding='utf-8')
-canvas=source[source.index('static mut FONT'):source.index('fn save(')]
+canvas=source[source.index('pub(crate) static mut FONT'):source.index('fn save(')]
 draw=source[source.index('fn materials('):source.index('pub fn render()')]
 render=source[source.index('pub fn render()'):source.index('pub fn menu()')]
 render='pub fn render(){let cv=Canvas::new().unwrap();STATE.with(|s|{'+render.split(' STATE.with(|s|{',1)[1]
@@ -33,7 +33,8 @@ use alloc::{vec::Vec,format,string::String};
 use std::cell::RefCell;
 use model::{List,Recipe};use locales as l;use generated as g;
 use sys::imgui::{ImVec2,ImDrawFlags};
-pub mod sys{pub mod imgui{
+pub mod sys{mod language_ui{pub fn init(){}}
+pub mod imgui{
  #[derive(Clone,Copy,Debug)]pub struct ImVec2{pub x:f32,pub y:f32}
  pub enum ImDrawFlags{None,Closed}
  pub struct Baked{size:f32}pub struct Glyph{pub AdvanceX:f32,pub X0:f32,pub X1:f32,pub Y0:f32,pub Y1:f32}
@@ -41,6 +42,7 @@ pub mod sys{pub mod imgui{
  pub unsafe fn ImFont_GetFontBaked(_: *mut u8,size:f32,_:f32)->*mut Baked{unsafe{BAKED.size=size};&raw mut BAKED}
  pub unsafe fn ImFontBaked_FindGlyph(baked: *mut Baked,ch:u16)->*mut Glyph{let at=ch as usize*8;let adv=ch as usize*4;unsafe{GLYPH.AdvanceX=f32::from_le_bytes(ADV[adv..adv+4].try_into().unwrap())*(*baked).size;GLYPH.X0=f32::from_le_bytes(HORIZONTAL[at..at+4].try_into().unwrap())*(*baked).size;GLYPH.X1=f32::from_le_bytes(HORIZONTAL[at+4..at+8].try_into().unwrap())*(*baked).size;GLYPH.Y0=f32::from_le_bytes(BOUNDS[at..at+4].try_into().unwrap())*(*baked).size;GLYPH.Y1=f32::from_le_bytes(BOUNDS[at+4..at+8].try_into().unwrap())*(*baked).size;} &raw mut GLYPH}
 }}
+mod language_ui{pub fn init(){}}
 pub mod imgui{
  use super::*;static ADV:&[u8]=include_bytes!("advances.bin");thread_local!{static SIZE:RefCell<f32>=const{RefCell::new(25.)};}
  #[derive(Clone,Copy)]pub struct ImFont;impl ImFont{pub fn raw(&self)->*mut u8{std::ptr::null_mut()}pub fn load(_: &std::ffi::CStr)->Option<Self>{Some(Self)}}
@@ -89,8 +91,8 @@ fn main(){
  match screen{"sort-primary"=>s.sort=Some(sorting::Dialog::default()),"sort-secondary"=>s.sort=Some(sorting::Dialog{secondary:true,criterion:1,..Default::default()}),"sort-wait"=>s.sort=Some(sorting::Dialog{secondary:true,criterion:1,message:1,..Default::default()}),"register"=>{s.mode=1;s.selected=7},"register-filled"=>s.mode=1,"materials"=>s.tab=1,"inspect"=>s.focus.material=true,"skills"=>s.detail_page=1,"confirm"=>s.mode=4,"done"=>s.mode=5,"overwrite"=>s.mode=3,"quick-remove"=>s.mode=8,"notice"=>{s.mode=0;s.notices.push(r);},"notice-test"=>start_notice_demo(&mut s),"weapon"=>s.selected=2,"category"=>{if let Some(r)=g::RECIPES.iter().find(|r|r.group>0){s.list.slots[0]=Some(model::Entry{recipe:*r,ready:None})}},_=>()}
  if screen=="materials-long"{let r=*g::RECIPES.iter().find(|r|r.kind==9&&r.id==51&&r.materials.iter().any(|m|g::ITEMDATA.get(m.id as usize*2).is_some_and(|v|v[0]=="Gore Magala Feeler+"))).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});s.stock.fill(0);s.tab=1;}
  if screen=="braces"{let r=*g::RECIPES.iter().find(|r|r.kind==3&&r.id==3&&r.level==0).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
- if screen=="long-equipment"{let r=*g::RECIPES.iter().max_by(|a,b|imgui::calc_text_size(name(**a,lang),false,0.).x.total_cmp(&imgui::calc_text_size(name(**b,lang),false,0.).x)).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
- if screen=="long-material"{let r=*g::RECIPES.iter().max_by(|a,b|{let widest=|r:&Recipe|r.totals().iter().map(|m|imgui::calc_text_size(item(m.id,lang),false,0.).x as u32).max().unwrap_or(0);widest(a).cmp(&widest(b))}).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});s.focus.material=true;}
+ if screen=="long-equipment"{let r=*g::RECIPES.iter().max_by(|a,b|imgui::calc_text_size(&name(**a,lang),false,0.).x.total_cmp(&imgui::calc_text_size(&name(**b,lang),false,0.).x)).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
+ if screen=="long-material"{let r=*g::RECIPES.iter().max_by(|a,b|{let widest=|r:&Recipe|r.totals().iter().map(|m|imgui::calc_text_size(&item(m.id,lang),false,0.).x as u32).max().unwrap_or(0);widest(a).cmp(&widest(b))}).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});s.focus.material=true;}
  STORE.with(|v|*v.borrow_mut()=Some(s));unsafe{FONT=Some(imgui::ImFont)}
  if screen=="prompts"{let cv=Canvas::new().unwrap();cv.bar(1102.,528.,160.,icons::R3,l::QUICK_REMOVE[lang]);cv.bar(1102.,564.,160.,icons::R3,l::REGISTER[lang]);return}
  render();
@@ -126,7 +128,7 @@ def paint(commands,width=1280,height=720):
    if typ=='polygon':d.polygon(p,fill=color(c))
    else:d.line(p+[p[0]],fill=color(c),width=max(1,round(w[0])))
   elif typ=='text':
-   x,y,size,c,text=a;f=ImageFont.truetype(str(ROOT/'assets/NotoSansCJKkr-Regular.otf'),max(1,round(size*1000/denom)))
+   x,y,size,c,text=a;f=ImageFont.truetype(str(ROOT/'assets/languages/font.shared.otf'),max(1,round(size*1000/denom)))
    d.text((x,y),text,font=f,fill=color(c))
   elif typ=='icon':
    tile,x,y,w,h,c,flip=a;sx,sy,sw,sh=sprites[tile];pic=atlas.crop((sx,sy,sx+sw,sy+sh)).resize((max(1,round(w)),max(1,round(h))),Image.Resampling.LANCZOS)

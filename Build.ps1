@@ -1,4 +1,4 @@
-param([switch]$SkipPackage, [switch]$Offline)
+param([switch]$SkipPackage, [switch]$Offline, [string]$ResourcePython = "python")
 $ErrorActionPreference = 'Stop'
 Push-Location $PSScriptRoot
 $taskOldPath = $env:PATH
@@ -7,6 +7,8 @@ $taskOldLinker = $env:CARGO_TARGET_ARMV7A_NONE_EABI_LINKER
 try {
     & python './tools/prepare_names.py'
     if ($LASTEXITCODE -ne 0) { throw 'Name resource generation failed' }
+    & $ResourcePython './tools/prepare_languages.py'
+    if ($LASTEXITCODE -ne 0) { throw 'Language resource generation failed (fontTools is required when regenerating fonts).' }
     if ($Offline) { $env:CARGO_NET_OFFLINE = 'true' }
     $taskArmRoot = $env:DEVKITARM
     if (-not $taskArmRoot -and $env:DEVKITPRO) { $taskArmRoot = Join-Path $env:DEVKITPRO 'devkitARM' }

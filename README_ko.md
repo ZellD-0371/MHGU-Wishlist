@@ -115,4 +115,3 @@ cargo +nightly forge build --release --features debug-ui
 `src`, `.cargo`, `link`, `conf`, `assets`, `tools`는 소스 빌드·검사에 필요한 파일입니다. `Cargo.lock`과 생성된 Rust 데이터도 빌드 입력이므로 함께 보관합니다.
 
 빌드 결과물, 배포 ZIP, 로컬 테스트 게임·세이브, 로그, 브라우저 프로필과 미리보기 캐시는 `.gitignore`로 제외합니다. `Run-Test.cmd`는 이 작업 공간의 별도 테스트 실행용이며 배포 설치에는 필요하지 않습니다.
-

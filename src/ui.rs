@@ -3,7 +3,7 @@ use forge::input::{Input,Key};
 use alloc::{vec::Vec,format,string::String,ffi::CString};
 use forge::{imgui,sys::imgui::{ImVec2,ImDrawFlags,ImGuiComboFlags,ImGuiSelectableFlags}};
 use crate::{STATE,State,model::{Recipe,List},locales as l,generated as g,controller as c,storage,sound::{self,Cue}};
-static mut FONT:Option<imgui::ImFont>=None;
+pub(crate) static mut FONT:Option<imgui::ImFont>=None;
 // Steel workshop palette; native button bars below deliberately keep their own art.
 const WHITE:u32=0xffebece9;const GOLD:u32=0xff75bbe9;const BLUE:u32=0xffd3c493;const RED:u32=0xff8da1ff;const GREEN:u32=0xffaccea4;const MUTED:u32=0xffc0c0b7;
 const PANEL:u32=0xf4282620;const INSET:u32=0xee1d1a15;const RAISED:u32=0xff373229;const EDGE:u32=0xff807d70;const RULE:u32=0xff575347;
@@ -12,9 +12,9 @@ const BODY:f32=25.;
 // Existing HD atlas art: equipment list, material container, decoration.
 const SORT_ORDER_ICON:usize=36;const SORT_STOCK_ICON:usize=23;const SORT_DECORATION_ICON:usize=44;
 pub(crate) fn push_binding_font()->bool{if let Some(f)=unsafe{FONT}{imgui::push_font(&f,Some(18.));true}else{false}}
-pub fn init(){crate::icons::init();crate::text_data::init();crate::name_data::init();unsafe{FONT=imgui::ImFont::load(c"app:/nativeNX/plugins/wishlist/NotoSansCJKkr-Regular.otf");}}
-fn table_name(table:u8,index:usize,lang:usize)->&'static str{crate::name_data::get(table,index,lang)}
-pub fn name(r:Recipe,lang:usize)->&'static str{match r.kind{
+pub fn init(){crate::language_ui::init();}
+fn table_name(table:u8,index:usize,lang:usize)->String{crate::name_data::get(table,index,lang).into()}
+pub fn name(r:Recipe,lang:usize)->String{match r.kind{
  1..=5=>table_name(2,r.id as usize*10+r.kind as usize-1,lang),
  7=>table_name(5,r.id as usize*6,lang),8=>table_name(6,r.id as usize*6,lang),
  9=>table_name(7,r.id as usize*6,lang),10=>table_name(8,r.id as usize*6,lang),11=>table_name(9,r.id as usize*6,lang),
@@ -22,8 +22,8 @@ pub fn name(r:Recipe,lang:usize)->&'static str{match r.kind{
  16=>table_name(13,r.id as usize*6,lang),17=>table_name(14,r.id as usize*6,lang),18=>table_name(15,r.id as usize*6,lang),
  19=>table_name(16,r.id as usize*6,lang),20=>table_name(17,r.id as usize*6,lang),21=>table_name(18,r.id as usize*6,lang),
  22=>table_name(3,r.id as usize*2,lang),23|24=>table_name(4,r.id as usize*4+(r.kind-23) as usize,lang),
- 25=>table_name(1,r.id as usize*2,lang),_=>"?"}}
-fn item(id:u16,lang:usize)->&'static str{table_name(1,id as usize*2,lang)}
+ 25=>table_name(1,r.id as usize*2,lang),_=>"?".into()}}
+fn item(id:u16,lang:usize)->String{table_name(1,id as usize*2,lang)}
 struct Canvas{scale:f32,ox:f32,oy:f32,draw:imgui::DrawList}
 impl Canvas{
  fn new()->Option<Self>{let draw=imgui::DrawList::foreground();if draw.raw().is_null(){return None}let sz=imgui::get_io().DisplaySize;let view=crate::presentation::viewport(sz.x,sz.y,STATE.with(|s|s.list.ui_scale))?;Some(Self{scale:view.scale,ox:view.ox,oy:view.oy,draw})}
@@ -94,7 +94,7 @@ impl Canvas{
   for bit in 0..24{if chord&(1<<bit)==0{continue}if px>x+8.{self.box_text(px-5.,y,5.,28.,13.,WHITE,"+",true);}
    let tile=match bit{0=>Some(crate::icons::A),1=>Some(crate::icons::B),2=>Some(crate::icons::X),3=>Some(crate::icons::Y),4=>Some(crate::icons::L3),5=>Some(crate::icons::R3),6=>Some(crate::icons::L),7=>Some(crate::icons::R),8=>Some(crate::icons::ZL),9=>Some(crate::icons::ZR),12=>Some(crate::icons::DPAD_LEFT),14=>Some(crate::icons::DPAD),_=>None};
    if let Some(tile)=tile{self.icon(tile,px,y+(28.-size)*0.5,size,WHITE);}else{let text=match bit{10=>"+",11=>"−",13=>"↑",15=>"↓",16=>"L←",17=>"L↑",18=>"L→",19=>"L↓",20=>"R←",21=>"R↑",22=>"R→",_=>"R↓"};self.rect(px,y+(28.-size)*0.5,size,size,RAISED);self.box_text(px,y,size,28.,16.,WHITE,text,true);}px+=size+5.;
-  }self.box_text(x+width+10.,y,142.-width,28.,24.,WHITE,label,false);
+  }self.box_text(x+width+10.,y,142.-width,28.,24.,WHITE,&label,false);
  }
  fn bar(&self,x:f32,y:f32,w:f32,button:usize,label:&str){
   // Native assign.gui: 160x28, 156px black centre, 12px HD lobby end caps.
@@ -177,10 +177,8 @@ fn save(next:List)->bool{
  let result=if let Some(slot)=profile{storage::character(slot).save(&next.encode_character())}else{return false};
  match result{Ok(())=>{STATE.with(|s|{s.list=next;s.notices.retain_registered(&s.list);});true},Err(_)=>{STATE.with(|s|s.status=3);false}}
 }
-pub(crate) fn apply_preferences(next:&List){
- // Apply in memory immediately. Only the explicit Save settings button writes preferences.
- STATE.with(|s|{s.list.copy_preferences(next);s.settings_loaded=true;s.settings_notice=1;});
-}
+pub(crate) fn apply_preferences(next:&List){crate::language_ui::request(next);}
+
 fn save_preferences()->bool{
  let next=STATE.with(|s|s.list.clone());
  match storage::save_settings(&next){
@@ -266,7 +264,7 @@ fn materials(cv:&Canvas,s:&State,r:Recipe,x:f32,y:f32,w:f32){
   if s.focus.material&&s.focus.index==i{cv.selection(x,py-3.,w,39_f32.min(step-3.),true,false);}
   let height=39_f32.min(step-3.);let row_y=py-3.;
   let (tile,tint)=crate::icons::material(m.id);cv.icon(tile,x+4.,row_y+(height-27.)*0.5,27.,tint);
-  cv.box_text(x+38.,row_y,w-193.,height,BODY,if good{WHITE}else{RED},item(m.id,lang),false);
+  cv.box_text(x+38.,row_y,w-193.,height,BODY,if good{WHITE}else{RED},&item(m.id,lang),false);
   cv.box_text(x+w-146.,row_y,65.,height,BODY,WHITE,&format!("× {}",m.count),false);
   // Original inventory chest icon from the native item sheet.
   cv.icon(crate::icons::CHEST,x+w-79.,row_y+(height-23.)*0.5,23.,WHITE);
@@ -282,9 +280,9 @@ fn materials(cv:&Canvas,s:&State,r:Recipe,x:f32,y:f32,w:f32){
 
  if s.focus.material{if let Some(m)=r.totals().get(s.focus.index){
   cv.rect(x,465.,w,140.,INSET);cv.line(x,465.,x+w,465.,RULE);let (tile,tint)=crate::icons::material(m.id);cv.icon(tile,x+10.,507.,44.,tint);
-  cv.fit(x+10.,471.,w-20.,26.,GOLD,item(m.id,lang));
+  cv.fit(x+10.,471.,w-20.,26.,GOLD,&item(m.id,lang));
   if let Some(data)=crate::icons::ITEMS.get(m.id as usize){cv.wrap(x+8.,555.,65.,20.,crate::presentation::rarity(data.2 as i16),&format!("{} {}",l::RARITY[lang],data.2));}
-  cv.paragraph(x+76.,506.,w-88.,94.,BODY,WHITE,crate::name_data::material_description(m.id,lang));
+  cv.paragraph(x+76.,506.,w-88.,94.,BODY,WHITE,&crate::name_data::material_description(m.id,lang));
 
 
  }}
@@ -299,24 +297,24 @@ fn aggregate(cv:&Canvas,s:&State)->Option<Recipe>{
   let color=if s.stock_ready&&owned<m.count{RED}else{WHITE};
   if focus{cv.selection(146.,y-1.,380.,34.,true,false);}
   let (tile,tint)=crate::icons::material(m.id);cv.icon(tile,153.,y+3.,27.,tint);
-  cv.box_text(188.,y-1.,197.,34.,BODY,color,item(m.id,lang),false);cv.box_text(391.,y-1.,58.,34.,BODY,color,&format!("× {}",m.count),false);
+  cv.box_text(188.,y-1.,197.,34.,BODY,color,&item(m.id,lang),false);cv.box_text(391.,y-1.,58.,34.,BODY,color,&format!("× {}",m.count),false);
   cv.icon(crate::icons::CHEST,455.,y+5.,22.,WHITE);cv.box_text(487.,y-1.,38.,34.,BODY,color,&if s.stock_ready{format!("{}",owned)}else{"?".into()},false);
   cv.line(150.,y+33.,526.,y+33.,RULE);
  }
  cv.pager(336.,484.,cursor/8+1,totals.len().div_ceil(8));
  let Some(material)=totals.get(cursor) else{return None};
  // Material details follow the only cursor in this tab.
- cv.rect(146.,514.,380.,95.,INSET);cv.fit(155.,515.,235.,23.,GOLD,item(material.id,lang));
+ cv.rect(146.,514.,380.,95.,INSET);cv.fit(155.,515.,235.,23.,GOLD,&item(material.id,lang));
  let (tile,tint)=crate::icons::material(material.id);cv.icon(tile,155.,549.,32.,tint);
  if let Some(data)=crate::icons::ITEMS.get(material.id as usize){cv.fit(404.,518.,113.,18.,crate::presentation::rarity(data.2 as i16),&format!("{} {}",l::RARITY[lang],data.2));}
- cv.paragraph(197.,545.,320.,60.,23.,WHITE,crate::name_data::material_description(material.id,lang));
+ cv.paragraph(197.,545.,320.,60.,23.,WHITE,&crate::name_data::material_description(material.id,lang));
  let related=s.list.requiring_material(material.id);
  // Passive list: every related entry stays visible, with two columns for large lists.
  let columns=if related.len()>16{2}else{1};let rows=related.len().div_ceil(columns).max(1);let row_height=(355./rows as f32).min(58.);let column_width=367./columns as f32;let icon_size=(row_height-2.).min(30.);let top=225.;
  for (index,slot) in related.iter().enumerate(){
   let Some(entry)=s.list.slots[*slot] else{continue};let x=561.+(index/rows) as f32*column_width;let y=top+(index%rows) as f32*row_height;let font_size=BODY.min(row_height-2.);let label=name(entry.recipe,lang);
-  let text_width=cv.measure(font_size,label).min(column_width-icon_size-18.);let group=x+(column_width-icon_size-9.-text_width)*0.5;
-  cv.gear(entry.recipe,group,y,icon_size);cv.box_text(group+icon_size+9.,y,text_width,icon_size,font_size,WHITE,label,false);
+  let text_width=cv.measure(font_size,&label).min(column_width-icon_size-18.);let group=x+(column_width-icon_size-9.-text_width)*0.5;
+  cv.gear(entry.recipe,group,y,icon_size);cv.box_text(group+icon_size+9.,y,text_width,icon_size,font_size,WHITE,&label,false);
   if row_height>=42.{cv.line(x+9.,y+icon_size+12.,x+column_width-9.,y+icon_size+12.,RULE);}
  }
 
@@ -358,11 +356,11 @@ fn details(cv:&Canvas,s:&State,r:Option<Recipe>){
  cv.heading(984.,82.,266.,l::DETAILS[lang]);
  cv.icon(crate::icons::ZL,985.,132.,26.,WHITE);cv.center(1023.,129.,188.,25.,WHITE,&format!("{} / 2",s.detail_page+1));cv.icon(crate::icons::ZR,1222.,132.,26.,WHITE);
  let Some(r)=r else{cv.box_text(984.,69.,266.,551.,26.,MUTED,l::NO_EQUIPMENT[lang],true);return};
- cv.rect(984.,169.,266.,45.,INSET);cv.rect(984.,169.,3.,45.,GOLD);cv.icon_plate(995.,176.,31.);cv.gear(r,997.,178.,27.);cv.box_text(1036.,169.,205.,45.,BODY,GOLD,name(r,lang),false);
+ cv.rect(984.,169.,266.,45.,INSET);cv.rect(984.,169.,3.,45.,GOLD);cv.icon_plate(995.,176.,31.);cv.gear(r,997.,178.,27.);cv.box_text(1036.,169.,205.,45.,BODY,GOLD,&name(r,lang),false);
  cv.rect(984.,224.,266.,382.,INSET);
  if s.detail_page==1{
   let description=if r.kind==25{crate::name_data::material_description(r.id,lang)}else{crate::text_data::description(r.kind,r.id,lang)};
-  cv.paragraph(995.,231.,244.,177.,BODY,WHITE,description);cv.line(995.,417.,1239.,417.,RULE);
+  cv.paragraph(995.,231.,244.,177.,BODY,WHITE,&description);cv.line(995.,417.,1239.,417.,RULE);
   cv.section(995.,426.,244.,l::SKILLS[lang]);
   if let Some(d)=crate::equipment::get(r){if d.skills.is_empty(){cv.center(995.,466.,244.,23.,MUTED,"—");}for (i,(id,pt)) in d.skills.iter().enumerate(){let y=465.+i as f32*33.;cv.box_text(995.,y,189.,30.,24.,WHITE,crate::equipment::skill(*id,lang),false);cv.box_text(1190.,y,49.,30.,24.,if *pt>0{GREEN}else{RED},&format!("{:+}",pt),false);cv.line(995.,y+30.,1239.,y+30.,RULE);}}
  }else if let Some(d)=crate::equipment::get(r){
@@ -375,7 +373,7 @@ fn details(cv:&Canvas,s:&State,r:Option<Recipe>){
   let rarity=if r.kind==25{crate::icons::ITEMS.get(r.id as usize).map_or(d.rarity,|i|i.2 as i16)}else{d.rarity};row_color(l::RARITY[lang],&format!("{}",rarity),y,crate::presentation::rarity(rarity));y+=step;row("Lv",&format!("{}",r.level.max(1)),y);y+=step;
   if !armor&&r.kind!=25{
    row(l::ATTACK[lang],&format!("{}",d.attack),y);y+=step;
-   for (element,value) in d.elements{if element>0&&value>0{let idx=element as usize-1;let label=crate::equipment::ELEMENTS.get(idx).map_or("",|v|v[lang]);cv.icon(crate::icons::ELEMENT_START+idx,995.,y+3.,22.,WHITE);cv.box_text(1023.,y,140.,step-2.,font,WHITE,label,false);cv.box_text(1175.,y,64.,step-2.,font+1.,WHITE,&format!("{}",value),false);cv.line(995.,y+step-2.,1239.,y+step-2.,RULE);y+=step;}}
+   for (element,value) in d.elements{if element>0&&value>0{let idx=element as usize-1;let label=crate::equipment::ELEMENTS.get(idx).map_or("",|v|v[lang]);cv.icon(crate::icons::ELEMENT_START+idx,995.,y+3.,22.,WHITE);cv.box_text(1023.,y,140.,step-2.,font,WHITE,&label,false);cv.box_text(1175.,y,64.,step-2.,font+1.,WHITE,&format!("{}",value),false);cv.line(995.,y+step-2.,1239.,y+step-2.,RULE);y+=step;}}
    if sharp{cv.fit(995.,y,244.,font,BLUE,l::SHARPNESS[lang]);y+=26.;cv.sharpness(995.,y,244.,d.sharp);y+=25.;}
    row(l::AFFINITY[lang],&format!("{}%",d.affinity),y);y+=step;
   }
@@ -441,7 +439,7 @@ pub fn render(){
   let registering=matches!(s.mode,1|3|5);cv.frame(128.,69.,820.,551.);
   cv.heading(146.,82.,782.,if registering{l::REGISTER_TITLE[lang]}else{l::TITLE[lang]});
   if s.preview{cv.text(350.,35.,600.,17.,GOLD,&format!("{}    L / R  {}/8   B / Esc",l::PREVIEW[lang],s.preview_panel+1));}
-  if registering{cv.section(146.,123.,320.,l::TARGET[lang]);cv.rect(146.,154.,320.,43.,INSET);cv.icon_plate(154.,160.,31.);if let Some(r)=s.frozen{cv.gear(r,156.,162.,27.);cv.box_text(197.,154.,258.,43.,BODY,WHITE,name(r,lang),false);}}
+  if registering{cv.section(146.,123.,320.,l::TARGET[lang]);cv.rect(146.,154.,320.,43.,INSET);cv.icon_plate(154.,160.,31.);if let Some(r)=s.frozen{cv.gear(r,156.,162.,27.);cv.box_text(197.,154.,258.,43.,BODY,WHITE,&name(r,lang),false);}}
   else{
    for (tab,x,w,label) in [(0,185.,341.,l::LIST[lang]),(1,531.,358.,l::TOTAL[lang])]{cv.rect(x,126.,w,35.,if s.tab==tab{0xff2e302d}else{INSET});cv.rect(x,159.,w,2.,if s.tab==tab{GOLD}else{RULE});cv.box_text(x+8.,126.,w-16.,33.,24.,if s.tab==tab{GOLD}else{MUTED},label,true);}
    cv.icon(crate::icons::L,148.,130.,28.,WHITE);cv.icon(crate::icons::R,897.,130.,28.,WHITE);
@@ -451,7 +449,7 @@ pub fn render(){
    cv.section(146.,198.,320.,l::TITLE[lang]);let start=s.selected/8*8;
    for i in start..start+8{let y=230.+(i-start) as f32*42.;let focus=i==s.selected;
     cv.selection(146.,y,320.,38.,focus&&!s.focus.material,i%2==1);
-    if let Some(r)=if focus{selected}else{s.list.slots[i].map(|e|e.recipe)}{let color=if !s.stock_ready{WHITE}else if r.ready(&s.stock,g::PROVISIONS){GREEN}else{RED};cv.icon_plate(154.,y+4.,30.);cv.gear(r,157.,y+7.,24.);cv.box_text(196.,y,260.,38.,BODY,color,name(r,lang),false);}else{cv.box_text(159.,y,296.,38.,BODY,MUTED,l::EMPTY[lang],false);}
+    if let Some(r)=if focus{selected}else{s.list.slots[i].map(|e|e.recipe)}{let color=if !s.stock_ready{WHITE}else if r.ready(&s.stock,g::PROVISIONS){GREEN}else{RED};cv.icon_plate(154.,y+4.,30.);cv.gear(r,157.,y+7.,24.);cv.box_text(196.,y,260.,38.,BODY,color,&name(r,lang),false);}else{cv.box_text(159.,y,296.,38.,BODY,MUTED,l::EMPTY[lang],false);}
    }
    cv.pager(306.,580.,s.selected/8+1,6);
    cv.line(482.,172.,482.,605.,RULE);
@@ -492,8 +490,8 @@ pub fn menu(){
  let defaults=CString::new(l::SETTINGS_DEFAULTS[lang]).unwrap();
  if imgui::button(&defaults,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.reset_preferences();apply_preferences(&list);}
  imgui::same_line(0.,-1.);
- let save=CString::new(l::SETTINGS_SAVE[lang]).unwrap();if imgui::button(&save,ImVec2{x:0.,y:0.}){save_preferences();}
- match STATE.with(|s|s.settings_notice){1=>imgui::text(l::SETTINGS_PENDING[lang]),2=>imgui::text(l::SETTINGS_SAVED[lang]),3=>imgui::text(l::SETTINGS_FAILED[lang]),_=>{}}
+ imgui::begin_disabled(STATE.with(|s|s.pending_preferences.is_some()));let save=CString::new(l::SETTINGS_SAVE[lang]).unwrap();if imgui::button(&save,ImVec2{x:0.,y:0.}){save_preferences();}imgui::end_disabled();
+ match STATE.with(|s|s.settings_notice){1=>imgui::text(l::SETTINGS_PENDING[lang]),2=>imgui::text(l::SETTINGS_SAVED[lang]),3=>imgui::text(l::SETTINGS_FAILED[lang]),4=>imgui::text(l::LANGUAGE_FAILED[lang]),_=>{}}
  #[cfg(feature="debug-ui")]{
  let playing=STATE.with(|s|s.game_ready&&s.loaded&&s.profile.is_some());
  if !playing{imgui::text(l::ENTER_GAME[lang]);}

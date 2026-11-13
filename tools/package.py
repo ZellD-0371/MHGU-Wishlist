@@ -6,13 +6,13 @@ VERSION=tomllib.loads((ROOT/'Cargo.toml').read_text(encoding='utf-8'))['package'
 ARCHIVE=ROOT/f'Wishlist_v{VERSION}.zip'
 files={
  'romfs/nativeNX/plugins/wishlist.nro':ROOT/'wishlist.nro',
- 'romfs/nativeNX/plugins/wishlist/ui-text.bin':ROOT/'assets/ui-text.bin',
- 'romfs/nativeNX/plugins/wishlist/ui-names.bin':ROOT/'assets/ui-names.bin',
  'romfs/nativeNX/plugins/wishlist/wishlist-atlas.rgba':ROOT/'assets/wishlist-atlas.rgba',
- 'romfs/nativeNX/plugins/wishlist/NotoSansCJKkr-Regular.otf':ROOT/'assets/NotoSansCJKkr-Regular.otf',
  'romfs/nativeNX/plugins/wishlist/NOTO_LICENSE.txt':ROOT/'assets/NOTO_LICENSE.txt',
  'romfs/nativeNX/plugins/wishlist/LICENSE.txt':ROOT/'LICENSE',
 }
+resource_manifest=json.loads((ROOT/'assets/languages/manifest.json').read_text())
+for name in resource_manifest['files']:files['romfs/nativeNX/plugins/wishlist/languages/'+name]=ROOT/'assets/languages'/name
+assert len(files)==23,'Expected 19 language resources and 4 common files'
 # Match the runtime's actual pre-load check, including BSS and next-module alignment.
 import struct
 nro=(ROOT/'wishlist.nro').read_bytes();required=len(nro)+struct.unpack_from('<I',nro,0x38)[0]+0x10000
@@ -28,6 +28,9 @@ if OUT.exists():
   assert child.resolve().parent==OUT.resolve(),'Cleanup target outside package output'
   if child.is_dir():shutil.rmtree(child)
   else:child.unlink()
+for name in ['ui-text.bin','ui-names.bin','NotoSansCJKkr-Regular.otf']:
+ stale=OUT/'romfs/nativeNX/plugins/wishlist'/name
+ if stale.is_file():stale.unlink()
 manifest={}
 for name,source in files.items():
  dest=OUT/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,dest)

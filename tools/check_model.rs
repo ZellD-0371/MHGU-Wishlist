@@ -157,6 +157,7 @@ fn recipe()->Recipe{Recipe{kind:2,id:4,materials:[Material{id:318,count:2},Mater
 }
 
 #[path="../src/text_blob.rs"]mod text_blob;
+#[path="../src/language_pack.rs"]mod language_pack;
 #[path="../src/name_data.rs"]mod name_data;
 mod material_text_source{include!("../src/item_text_generated.rs");}
 #[test]fn external_names_preserve_all_source_rows_and_nine_languages(){
@@ -431,4 +432,33 @@ fn display_ids(list:&List)->Vec<u16>{list.slots.iter().flatten().map(|e|e.recipe
   let mut loaded=List::decode(&list.encode_character()).unwrap();assert!(loaded.slots[7].is_none());assert_eq!(loaded.slots[8].unwrap().recipe.id,3);assert_eq!(loaded.slots[47].unwrap().recipe.id,4);
   loaded.sort_display(0,0,&[0;4096],false,&[]).unwrap();assert_eq!(display_ids(&loaded),vec![1,3,4]);assert_eq!(loaded.costs[..3],[100,300,400]);assert!(loaded.slots[3..].iter().all(Option::is_none));
  }
+}
+
+fn language_files(language:usize,kind:usize)->Vec<u8>{let code=locales::CODES[language];std::fs::read(format!("assets/languages/{}.{}.bin",if kind==0{"names"}else{"text"},code)).unwrap()}
+#[test]fn single_language_packs_preserve_every_name_and_description_in_all_nine_languages(){
+ for lang in 0..9{let pack=language_pack::Pack::prepare(lang,|kind|Ok(language_files(lang,kind))).unwrap();
+  for (description,source) in [(false,&include_bytes!("../assets/ui-names.bin")[..]),(true,&include_bytes!("../assets/ui-text.bin")[..])]{
+   let single=language_files(lang,description as usize);assert_eq!(text_blob::single_language(&single),Some(lang));assert!(text_blob::valid(&single));
+   let rows=u32::from_le_bytes(source[8..12].try_into().unwrap()) as usize;
+   for i in 0..rows{let key=u32::from_le_bytes(source[12+i*40..16+i*40].try_into().unwrap());assert_eq!(pack.text(description,(key>>16) as u8,key as u16,lang),text_blob::get(source,(key>>16) as u8,key as u16,lang));}
+   assert_eq!(text_blob::get(&single,1,0,(lang+1)%9),"");
+  }
+  assert!(pack.bytes()<2*1024*1024); // one language only, not the original ~10 MiB corpus
+ }
+}
+#[test]fn resource_staging_failure_keeps_previous_language_and_owned_text_valid(){
+ let mut store=language_pack::Store::default();store.commit(language_pack::Pack::prepare(0,|kind|Ok(language_files(0,kind))).unwrap());
+ let owned=store.text(false,1,2,0);assert_eq!(owned,"Book of Combos 1");
+ for failure in 0..4{
+  let attempted=language_pack::Pack::prepare(4,|kind|{if failure==0&&kind==0||failure==1&&kind==1{return Err(())}let mut bytes=language_files(if failure==2{0}else{4},kind);if failure==3{bytes.truncate(20);}Ok(bytes)});
+  assert!(attempted.is_err());assert_eq!(store.active.as_ref().unwrap().language,0);assert_eq!(store.text(false,1,2,0),owned);
+ }
+ for lang in (0..9).cycle().take(90){let next=language_pack::Pack::prepare(lang,|kind|Ok(language_files(lang,kind))).unwrap();drop(store.commit(next));assert_eq!(store.active.as_ref().unwrap().language,lang);}
+ assert_eq!(owned,"Book of Combos 1");assert!(!language_pack::matches(99,0,b""));assert!(!language_pack::matches(0,9,b""));
+ assert_eq!(language_pack::crc32(b"123456789"),0xcbf43926);
+}
+#[test]fn single_language_blob_rejects_wrong_language_offsets_and_truncation(){
+ let good=language_files(0,0);for end in [0,4,12,15,20,good.len()-1]{assert!(text_blob::single_language(&good[..end]).is_none());}
+ let mut bad=good.clone();bad[8..12].copy_from_slice(&9u32.to_le_bytes());assert!(text_blob::single_language(&bad).is_none());
+ bad=good.clone();bad[20..24].copy_from_slice(&0u32.to_le_bytes());assert!(text_blob::single_language(&bad).is_none());
 }
