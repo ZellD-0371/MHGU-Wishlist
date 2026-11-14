@@ -36,16 +36,19 @@ Monster Hunter Generations Ultimate의 가공점에 찜 목록을 추가하는 F
 
 ```text
 mods/
-└─ Wishlist/
-   └─ romfs/
-      └─ nativeNX/
-         └─ plugins/
-            ├─ wishlist.nro
-            └─ wishlist/
-               ├─ ui-text.bin
-               ├─ ui-names.bin
-               ├─ wishlist-atlas.rgba
-               └─ NotoSansCJKkr-Regular.otf
+└── Wishlist/
+    └── romfs/
+        └── nativeNX/
+            └── plugins/
+                ├── wishlist.nro
+                └── wishlist/
+                    ├── LICENSE.txt
+                    ├── NOTO_LICENSE.txt
+                    ├── wishlist-atlas.rgba
+                    └── languages/
+                        ├── font.shared.otf
+                        ├── names.*.bin
+                        └── text.*.bin
 ```
 
 ## 사용 방법

@@ -23,7 +23,7 @@ fn palico_produce(owner:u32)->u32{
  if let Some((kind,id))=candidate{if (22..=24).contains(&kind)&&id>0&&unsafe{half(owner+0x46)}!=u16::MAX{enqueue(key(kind,id,0));}}
  result
 }
-fn count_item(base:u32,id:u16)->Option<u32>{let mut total=0;for (global,count) in [(0x1858438,2300),(0x18584b8,50)]{let p=unsafe{rd(base+global)};if !valid(p){return None}for i in 0..count{let item=unsafe{half(p+0x1a+i*4)};let count=unsafe{half(p+0x1c+i*4)};if item>=2992||count>99{return None}if item==id{total+=count as u32}}}Some(total)}
+fn count_item(base:u32,id:u16)->Option<u32>{let mut total=0;for (global,count) in [(0x1858438,2300),(0x18584b8,50)]{let p=unsafe{rd(base+global)};if !valid(p){return None}for i in 0..count{let item=unsafe{half(p+0x1a+i*4)};let count=unsafe{half(p+0x1c+i*4)};if item>=2992||count>99{continue;}if item==id{total+=count as u32}}}Some(total)}
 #[forge::hook(offset=0x6fdf14)]
 fn decoration_produce(owner:u32)->u32{
  let base=BASE.load(Ordering::Relaxed);let id=if valid(owner)&&unsafe{half(owner+0x5c)}==6{let row=unsafe{byte(owner+0x44)} as u32;if row<8{unsafe{half(owner+0x28d6+row*48)}}else{0}}else{0};

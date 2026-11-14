@@ -65,12 +65,54 @@ pub fn install(base:u32)->bool{
  if signatures.iter().any(|&(p,w)|unsafe{rd(base+p)}!=w){return false}
  forge::install_hook!(base,smith_materials);forge::install_hook!(base,equipment);forge::install_hook!(base,load_box);true
 }
-pub fn inventory(base:u32,stock:&mut [u32;4096])->bool{
- // Globals referenced by the game's own combined pouch+box counter (+54FE8C).
- let pointers=unsafe{[rd(base+0x1858438),rd(base+0x18584b8)]};
- if !valid(pointers[0])||!valid(pointers[1]){crate::diagnostics::event(1,"inventory unavailable: box/pouch pointers",[1,pointers[0],pointers[1],0]);return false}
- match crate::inventory::collect(stock,|source,slot|{let p=pointers[source as usize]+slot*4;unsafe{(half(p+0x1a),half(p+0x1c))}}){
-  Ok(())=>{if crate::diagnostics::enabled(){crate::diagnostics::event(1,"inventory ready: distinct items / total units",[0,stock.iter().filter(|n|**n>0).count() as u32,stock.iter().sum(),0]);}true},
-  Err(e)=>{crate::diagnostics::event(1,"inventory rejected: source (2 box / 3 pouch), slot (0-based), item ID, count",[e.source+2,e.slot,e.id as u32,e.count as u32]);false}
- }
+
+pub fn inventory(base: u32, stock: &mut [u32; 4096]) -> bool {
+    let pointers = unsafe {
+        [
+            rd(base + 0x1858438),
+            rd(base + 0x18584b8),
+        ]
+    };
+
+    if !valid(pointers[0]) || !valid(pointers[1]) {
+        crate::diagnostics::event(
+            1,
+            "inventory unavailable: box/pouch pointers",
+            [1, pointers[0], pointers[1], 0],
+        );
+        return false;
+    }
+
+    let rejected = crate::inventory::collect(
+        stock,
+        |source, slot| {
+            let p = pointers[source as usize] + slot * 4;
+
+            unsafe {
+                (half(p + 0x1a), half(p + 0x1c))
+            }
+        },
+    );
+
+    if let Some(e) = rejected {
+        crate::diagnostics::event(
+            1,
+            "inventory skipped invalid slot: source (2 box / 3 pouch), slot, item ID, count",
+            [e.source + 2, e.slot, e.id as u32, e.count as u32],
+        );
+    } else if crate::diagnostics::enabled() {
+        crate::diagnostics::event(
+            1,
+            "inventory ready: distinct items / total units",
+            [
+                0,
+                stock.iter().filter(|n| **n > 0).count() as u32,
+                stock.iter().sum(),
+                0,
+            ],
+        );
+    }
+
+    true
 }
+

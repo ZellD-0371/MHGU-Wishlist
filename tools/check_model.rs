@@ -517,13 +517,95 @@ mod atlas_art{include!("../src/icons_generated.rs");}
  let before=emitted();event(1,"first",[0;4]);event(1,"repeat",[0;4]);assert_eq!(emitted(),before+1);tick(f32::NAN);tick(1.);event(1,"repeat",[0;4]);assert_eq!(emitted(),before+1);for _ in 0..29{tick(1.);}event(1,"periodic",[0;4]);assert_eq!(emitted(),before+2);
  assert!(set_enabled(false));assert!(!enabled());assert!(set_enabled(true));event(1,"new session",[0;4]);set_enabled(false);
 }
-#[test]fn stock_decoder_reports_unrelated_invalid_slot_and_recovers(){
- let mut stock=[0;4096];let mut reads=0;
- inventory::collect(&mut stock,|source,slot|{reads+=1;if slot==0{(7,if source==0{99}else{2})}else{(0,0)}}).unwrap();
- assert_eq!(reads,2350);assert_eq!(stock[7],101);
- let error=inventory::collect(&mut stock,|source,slot|if source==0&&slot==2299{(12,100)}else{(0,0)}).unwrap_err();
- assert_eq!(error,inventory::Failure{source:0,slot:2299,id:12,count:100});
- let error=inventory::collect(&mut stock,|source,slot|if source==1&&slot==49{(2992,1)}else{(0,0)}).unwrap_err();
- assert_eq!(error,inventory::Failure{source:1,slot:49,id:2992,count:1});
- inventory::collect(&mut stock,|_,_|(0,0)).unwrap();assert!(stock.iter().all(|n|*n==0));
+#[test]
+fn stock_decoder_reports_unrelated_invalid_slot_and_recovers() {
+    let mut stock = [0u32; 4096];
+    let mut reads = 0;
+
+    // Test 1: Valid items are counted correctly.
+    let result = inventory::collect(&mut stock, |source, slot| {
+        reads += 1;
+        if slot == 0 {
+            (7, if source == 0 { 99 } else { 2 })
+        } else {
+            (0, 0)
+        }
+    });
+
+    assert!(result.is_none());
+    assert_eq!(reads, 2350);
+    assert_eq!(stock[7], 101);
+
+    // Test 2: Invalid item count is detected.
+    let error = inventory::collect(&mut stock, |source, slot| {
+        if source == 0 && slot == 2299 {
+            (12, 100)
+        } else {
+            (0, 0)
+        }
+    }).unwrap();
+
+    assert_eq!(
+        error,
+        inventory::Failure {
+            source: 0,
+            slot: 2299,
+            id: 12,
+            count: 100,
+        }
+    );
+
+    // Test 3: Out-of-range item ID is detected.
+    let error = inventory::collect(&mut stock, |source, slot| {
+        if source == 1 && slot == 49 {
+            (2992, 1)
+        } else {
+            (0, 0)
+        }
+    }).unwrap();
+
+    assert_eq!(
+        error,
+        inventory::Failure {
+            source: 1,
+            slot: 49,
+            id: 2992,
+            count: 1,
+        }
+    );
+
+    // Test 4: Empty inventory clears previous stock.
+    let result = inventory::collect(&mut stock, |_, _| (0, 0));
+
+    assert!(result.is_none());
+    assert!(stock.iter().all(|n| *n == 0));
+
+    // Test 5: Invalid items must not interrupt scanning.
+    let mut skip_stock = [0u32; 4096];
+    let mut skip_reads = 0;
+
+    let rejected = inventory::collect(&mut skip_stock, |source, slot| {
+        skip_reads += 1;
+
+        match (source, slot) {
+            (0, 1344) => (3041, 10), // Invalid item ID
+            (0, 1345) => (42, 5),    // Valid item after invalid slot
+            (1, 0) => (42, 3),       // Valid item in pouch
+            _ => (0, 0),
+        }
+    });
+
+    assert_eq!(
+        rejected.unwrap(),
+        inventory::Failure {
+            source: 0,
+            slot: 1344,
+            id: 3041,
+            count: 10,
+        }
+    );
+
+    assert_eq!(skip_reads, 2350);
+    assert_eq!(skip_stock[3041], 0);
+    assert_eq!(skip_stock[42], 8);
 }

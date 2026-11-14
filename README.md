@@ -36,16 +36,19 @@ A Forge mod that adds a wishlist to the Smithy in Monster Hunter Generations Ult
 
 ```text
 mods/
-└─ Wishlist/
-   └─ romfs/
-      └─ nativeNX/
-         └─ plugins/
-            ├─ wishlist.nro
-            └─ wishlist/
-               ├─ ui-text.bin
-               ├─ ui-names.bin
-               ├─ wishlist-atlas.rgba
-               └─ NotoSansCJKkr-Regular.otf
+└── Wishlist/
+    └── romfs/
+        └── nativeNX/
+            └── plugins/
+                ├── wishlist.nro
+                └── wishlist/
+                    ├── LICENSE.txt
+                    ├── NOTO_LICENSE.txt
+                    ├── wishlist-atlas.rgba
+                    └── languages/
+                        ├── font.shared.otf
+                        ├── names.*.bin
+                        └── text.*.bin
 ```
 
 ## Usage
