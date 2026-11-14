@@ -1,7 +1,7 @@
 #![no_std]
 extern crate alloc;
 mod name_data;mod language;mod language_pack;mod language_ui;mod description_file;
-mod sorting;mod atlas;mod text_cache;mod material_cache;mod font_validation;
+mod diagnostics;mod inventory;mod sorting;mod atlas;mod text_cache;mod material_cache;mod font_validation;
 mod binding_model;mod bindings;
 mod hook_guard;
 mod hud_layout;
@@ -34,30 +34,32 @@ static STATE:Shared=Shared{lock:AtomicBool::new(false),data:UnsafeCell::new(None
 #[forge::entry]
 fn main(){
  let base=forge::mem::text_addr();STATE.with(|s|s.base=base);
- if !native::install(base){error!("[wishlist] MHGU global 1.4.0 signatures rejected; disabled");return}
- if !native_badges::install(base){error!("[wishlist] native icon signatures rejected; badges disabled");}
- if !completed::install(base){error!("[wishlist] production completion signatures rejected; auto removal disabled");}
+ if !{let ok=native::install(base);diagnostics::init_status(1,ok);ok}{error!("[wishlist] MHGU global 1.4.0 signatures rejected; disabled");return}
+ if !{let ok=native_badges::install(base);diagnostics::init_status(2,ok);ok}{error!("[wishlist] native icon signatures rejected; badges disabled");}
+ if !{let ok=completed::install(base);diagnostics::init_status(4,ok);ok}{error!("[wishlist] production completion signatures rejected; auto removal disabled");}
  #[cfg(feature="debug-ui")]
  sound::install(base);
- if !game_menu::install(base){error!("[wishlist] native + menu check failed; controller list shortcut disabled");}
- if !session::install(base){error!("[wishlist] character session signatures rejected");return}
- let input_ready=controller::install(base);
+ if !{let ok=game_menu::install(base);diagnostics::init_status(8,ok);ok}{error!("[wishlist] native + menu check failed; controller list shortcut disabled");}
+ if !{let ok=session::install(base);diagnostics::init_status(16,ok);ok}{error!("[wishlist] character session signatures rejected");return}
+ let input_ready=controller::install(base);diagnostics::init_status(32,input_ready);
  STATE.with(|s|{s.installed=true;s.input_ready=input_ready;});
  if !input_ready{error!("[wishlist] input capture failed; opening disabled");}
- info!("[wishlist] v{}; steel workshop UI; 9 languages; 48 slots; R3 register / L3+R3 list",env!("CARGO_PKG_VERSION"));
+ if crate::diagnostics::enabled(){info!("[wishlist] v{}; steel workshop UI; 9 languages; 48 slots; R3 register / L3+R3 list",env!("CARGO_PKG_VERSION"));}
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn forge_onUpdate(dt:f32){
  let (base,ready)=STATE.with(|s|(s.base,s.installed));if !ready{return}
  sound::update(base);
- if !STATE.with(|s|s.settings_loaded){let mut bytes=[0;storage::MAX_BYTES];if let Ok(text)=storage::WISHLIST.read(&mut bytes){if let Ok(list)=List::decode(text){STATE.with(|s|{s.list.copy_preferences(&list);s.settings_loaded=true;});}}}
+ if !STATE.with(|s|s.settings_loaded){let mut bytes=[0;storage::MAX_BYTES];match storage::WISHLIST.read(&mut bytes){Ok(text)=>match List::decode(text){Ok(list)=>STATE.with(|s|{s.list.copy_preferences(&list);s.settings_loaded=true;}),Err(())=>diagnostics::event(3,"settings INI parse failed",[0,0,0,0])},Err(e)=>diagnostics::event(3,"settings INI read failed (error enum)",[1,e as u32,0,0])}}
+ let logging=STATE.with(|s|s.list.diagnostics);diagnostics::set_enabled(logging);diagnostics::tick(dt);
  let (slot,playing)=session::update();
- STATE.with(|s|{if playing&&!s.game_ready{info!("[wishlist] character session ready (slot {})",slot.unwrap_or(0)+1);}
+ if logging{let data=STATE.with(|s|[u32::from(s.installed)|(u32::from(s.input_ready)<<1)|(u32::from(s.loaded)<<2)|(u32::from(playing)<<3),slot.map_or(0,|i|i as u32+1),s.cooldown,s.list.slots.iter().flatten().count() as u32]);diagnostics::event(0,"state: flags (hooks/input/save/playing), character slot, cooldown frames, entries",data);let prefs=STATE.with(|s|[s.list.language as u32,s.list.layout as u32,s.list.ui_scale as u32,crate::language::current().map_or(0,|l|l as u32+1)]);diagnostics::event(12,"preferences: language / layout / UI scale / active language+1 (0 unavailable)",prefs);}
+ STATE.with(|s|{if playing&&!s.game_ready{if crate::diagnostics::enabled(){info!("[wishlist] character session ready (slot {})",slot.unwrap_or(0)+1);}}
  s.game_ready=playing;if s.profile!=slot{completed::clear();native_badges::clear();s.profile=slot;s.loaded=false;s.sort=None;s.mode=0;s.target=None;s.stock_ready=false;s.material_cache=material_cache::Cache::default();s.notices.clear();s.notice_demo=None;s.events=0;s.cooldown=180;}if !playing{s.sort=None;s.mode=0;s.preview=false;s.events=0;s.notices.clear();s.notice_demo=None;}});
  let Some(slot)=slot else{return};
  if !STATE.with(|s|s.loaded){match storage::load_character(slot){
   Ok(mut list)=>STATE.with(|s|{if s.settings_loaded{list.copy_preferences(&s.list);}s.list=list;s.loaded=true}),
-  Err(_)=>return,
+  Err(e)=>{diagnostics::event(2,"character list load failed: slot / error",[slot as u32,e as u32,0,0]);return},
  }}
  if !playing{return}
  completed::update(slot);

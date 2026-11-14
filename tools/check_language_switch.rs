@@ -1,5 +1,6 @@
 //! Run the production pre-frame language coordinator against a host adapter.
 extern crate alloc;
+#[path="../src/diagnostics.rs"]mod diagnostics;
 extern crate self as forge;
 use std::{ffi::CString,sync::{Mutex,atomic::{AtomicUsize,Ordering}}};
 #[macro_export]macro_rules! error{($($t:tt)*)=>{{}}}

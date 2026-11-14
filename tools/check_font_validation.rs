@@ -1,5 +1,6 @@
 //! Production streaming validator, plus the actual font_valid file-open/close wiring.
 extern crate alloc;
+#[path="../src/diagnostics.rs"]mod diagnostics;
 extern crate self as forge;
 #[macro_export]macro_rules! error{($($t:tt)*)=>{{}}}
 #[macro_export]macro_rules! info{($($t:tt)*)=>{{}}}

@@ -13,7 +13,7 @@ pub fn request_open(_id:u32){cue(Cue::Open);}
 #[cfg(feature="debug-ui")]
 #[forge::hook(offset=0x4eeb78)]
 fn play_ui(owner:u32,id:u32)->u32{
- if capturing(){for c in &CAPTURED{let current=c.load(Ordering::Relaxed);if current==id{break}if current==u32::MAX{c.store(id,Ordering::Relaxed);forge::log::prelude::info!("[wishlist-sound] captured SE {}",id);break}}}
+ if capturing(){for c in &CAPTURED{let current=c.load(Ordering::Relaxed);if current==id{break}if current==u32::MAX{c.store(id,Ordering::Relaxed);if crate::diagnostics::enabled(){forge::log::prelude::info!("[wishlist-sound] captured SE {}",id);}break}}}
  original!(owner,id)
 }
 #[cfg(feature="debug-ui")]

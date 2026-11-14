@@ -1,5 +1,6 @@
 //! Exercise demand reads, bounded LRU, damaged resources and SDK handle lifetime.
 extern crate alloc;
+#[path="../src/diagnostics.rs"]mod diagnostics;
 #[path="../src/text_blob.rs"]mod text_blob;
 #[path="../src/language_pack.rs"]mod language_pack;
 #[path="../src/description_file.rs"]mod description_file;

@@ -32,6 +32,7 @@ stub=r'''
 extern crate alloc;extern crate self as forge;
 use alloc::{vec::Vec,format,string::String};
 use std::cell::RefCell;
+mod diagnostics{pub fn set_enabled(_:bool)->bool{false}}
 use model::{List,Recipe};use locales as l;use generated as g;
 use sys::imgui::{ImVec2,ImDrawFlags};
 pub mod sys{mod language_ui{pub fn init(){}}

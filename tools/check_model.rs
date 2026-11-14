@@ -495,3 +495,35 @@ mod atlas_art{include!("../src/icons_generated.rs");}
  }
  for bad in [cropped.len()-1,cropped.len()+1]{assert!(atlas::layout(bad as u64).is_none());}
 }
+
+#[path="../src/diagnostics.rs"]mod diagnostics;
+#[path="../src/inventory.rs"]mod inventory;
+#[test]fn diagnostic_preference_is_opt_in_persisted_global_and_resettable(){
+ assert!(!List::default().diagnostics);assert!(!List::decode("version=1\nlanguage=0\n").unwrap().diagnostics);
+ let mut settings=List::default();settings.diagnostics=true;
+ assert!(List::decode(&settings.encode()).unwrap().diagnostics);
+ assert!(!List::decode(&settings.encode_character()).unwrap().diagnostics);
+ let mut character=List::default();character.copy_preferences(&settings);assert!(character.diagnostics);
+ character.reset_preferences();assert!(!character.diagnostics);
+ assert!(List::decode("version=1\ndiagnostics=oops\n").is_err());
+ assert_eq!(crate::locales::ENABLE_LOGGING[4],"로그 기록 활성화");assert!(crate::locales::ENABLE_LOGGING.iter().all(|s|!s.is_empty()));
+}
+#[test]fn diagnostic_logs_are_gated_rate_limited_and_reenabled_cleanly(){
+ use diagnostics::*;
+ set_enabled(false);let before=emitted();event(1,"disabled",[0;4]);assert_eq!(emitted(),before);assert!(!enabled());
+ assert!(set_enabled(true));assert!(!set_enabled(true));assert!(enabled());
+ assert!(due(false,0,0,0));assert!(!due(true,7,7,29999));assert!(due(true,7,7,30000));
+ assert!(!due(true,7,8,999));assert!(due(true,7,8,1000));
+ let before=emitted();event(1,"first",[0;4]);event(1,"repeat",[0;4]);assert_eq!(emitted(),before+1);tick(f32::NAN);tick(1.);event(1,"repeat",[0;4]);assert_eq!(emitted(),before+1);for _ in 0..29{tick(1.);}event(1,"periodic",[0;4]);assert_eq!(emitted(),before+2);
+ assert!(set_enabled(false));assert!(!enabled());assert!(set_enabled(true));event(1,"new session",[0;4]);set_enabled(false);
+}
+#[test]fn stock_decoder_reports_unrelated_invalid_slot_and_recovers(){
+ let mut stock=[0;4096];let mut reads=0;
+ inventory::collect(&mut stock,|source,slot|{reads+=1;if slot==0{(7,if source==0{99}else{2})}else{(0,0)}}).unwrap();
+ assert_eq!(reads,2350);assert_eq!(stock[7],101);
+ let error=inventory::collect(&mut stock,|source,slot|if source==0&&slot==2299{(12,100)}else{(0,0)}).unwrap_err();
+ assert_eq!(error,inventory::Failure{source:0,slot:2299,id:12,count:100});
+ let error=inventory::collect(&mut stock,|source,slot|if source==1&&slot==49{(2992,1)}else{(0,0)}).unwrap_err();
+ assert_eq!(error,inventory::Failure{source:1,slot:49,id:2992,count:1});
+ inventory::collect(&mut stock,|_,_|(0,0)).unwrap();assert!(stock.iter().all(|n|*n==0));
+}

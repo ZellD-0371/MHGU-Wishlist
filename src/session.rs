@@ -19,7 +19,7 @@ fn select_character(owner:u32)->u32{
   let cancelled=core::ptr::read((owner+0x6b) as *const u8)!=0;
   if let Some(slot)=completed_load(before,after,cancelled,slot){
    SLOT.store(slot,Ordering::Release);QUIET.store(0,Ordering::Release);
-   forge::log::prelude::info!("[wishlist] Continue loaded character slot {}",slot+1);
+   if crate::diagnostics::enabled(){forge::log::prelude::info!("[wishlist] Continue loaded character slot {}",slot+1);}
   }
  }}result
 }

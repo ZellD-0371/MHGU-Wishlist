@@ -21,9 +21,10 @@ pub fn right_top(width:f32,height:f32,hud:Option<HudSize>)->Option<crate::presen
 pub fn current(base:u32)->Option<HudSize>{
  if !crate::native::valid(base)||base.checked_add(0x212699c).is_none(){return None}
  let render=unsafe{crate::native::rd(base+0x2126998)};
- if !crate::native::valid(render)||render&3!=0||render.checked_add(0x44bacc).is_none(){return None}
- if unsafe{crate::native::rd(render)}!=base+0x1754a58{return None}
- Some(unsafe{HudSize{render_width:crate::native::rd(render+0x44bac0),render_height:crate::native::rd(render+0x44bac4),ui_width:crate::native::rd(render+0x44bac8)}})
+ if !crate::native::valid(render)||render&3!=0||render.checked_add(0x44bacc).is_none(){crate::diagnostics::event(13,"HUD renderer unavailable: fallback used",[0,render,0,0]);return None}
+ let signature=unsafe{crate::native::rd(render)};if signature!=base+0x1754a58{crate::diagnostics::event(13,"HUD renderer signature mismatch: fallback used",[1,signature,base+0x1754a58,0]);return None}
+ let hud=unsafe{HudSize{render_width:crate::native::rd(render+0x44bac0),render_height:crate::native::rd(render+0x44bac4),ui_width:crate::native::rd(render+0x44bac8)}};
+ crate::diagnostics::event(13,"HUD render width / height / UI reference width",[2,hud.render_width,hud.render_height,hud.ui_width]);Some(hud)
 }
 #[cfg(not(target_arch="arm"))]
 pub fn current(_:u32)->Option<HudSize>{None}

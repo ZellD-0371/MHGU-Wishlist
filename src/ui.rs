@@ -489,6 +489,8 @@ pub fn menu(){
  let current=CString::new(l::LANGUAGES[lang]).unwrap();if imgui::begin_combo(c"Language",&current,ImGuiComboFlags::None){for (i,label) in l::LANGUAGES.iter().enumerate(){let text=CString::new(*label).unwrap();if imgui::selectable(&text,i==lang,ImGuiSelectableFlags::None,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.language=i;apply_preferences(&list);}}imgui::end_combo();}
  let scale=STATE.with(|s|s.list.ui_scale);let current=CString::new(format!("{}%",scale)).unwrap();
  if imgui::begin_combo(c"UI scale",&current,ImGuiComboFlags::None){for value in [50,60,70,80,90,100]{let text=CString::new(format!("{}%",value)).unwrap();if imgui::selectable(&text,value==scale,ImGuiSelectableFlags::None,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.ui_scale=value;apply_preferences(&list);}}imgui::end_combo();}
+ let mut logging=STATE.with(|s|s.list.diagnostics);let label=CString::new(l::ENABLE_LOGGING[lang]).unwrap();
+ if unsafe{forge::sys::imgui::igCheckbox(label.as_ptr(),&mut logging)}{let mut list=STATE.with(|s|s.list.clone());list.diagnostics=logging;apply_preferences(&list);crate::diagnostics::set_enabled(logging);}
  crate::bindings::ui();
  let defaults=CString::new(l::SETTINGS_DEFAULTS[lang]).unwrap();
  if imgui::button(&defaults,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.reset_preferences();apply_preferences(&list);}

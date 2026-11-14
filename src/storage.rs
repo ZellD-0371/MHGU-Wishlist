@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use core::ffi::{CStr, c_char, c_void};
-use forge::log::prelude::{info, warn};
+use forge::log::prelude::warn;
 
 pub const MAX_BYTES: usize = 8192;
 
@@ -81,7 +81,7 @@ impl SaveMount {
         if unsafe { forge_fs_mountSaveData() } {
             Ok(Self)
         } else {
-            warn!("Could not mount MHGU savedata");
+            crate::diagnostics::event(9,"savedata mount unavailable",[0,0,0,0]);
             Err(ReadError::Unavailable)
         }
     }
@@ -99,6 +99,7 @@ fn missing(code: u32) -> bool {
 }
 
 impl Location {
+    fn tag(&self)->u32{if self.path==WISHLIST.path{0}else if self.path==CHARACTER_1.path{1}else if self.path==CHARACTER_2.path{2}else{3}}
     pub fn read<'a>(&self, bytes: &'a mut [u8]) -> Result<&'a str, ReadError> {
         let _mount = SaveMount::open()?;
         let mut file = FileHandle(0);
@@ -110,11 +111,11 @@ impl Location {
             self.write_mounted(self.defaults)
                 .map_err(|_| ReadError::Io)?;
             bytes[..self.defaults.len()].copy_from_slice(self.defaults.as_bytes());
-            info!("{}: generated default INI", self.display);
+            crate::diagnostics::event(10,"generated default INI: file (0 settings, 1..3 character)",[self.tag(),0,0,0]);
             return Ok(core::str::from_utf8(&bytes[..self.defaults.len()]).unwrap());
         }
         if code != 0 {
-            warn!("{}: open failed 0x{code:08X}", self.display);
+            crate::diagnostics::event(11,"save open failed: file / stage / SDK result",[self.tag(),0,code,0]);
             return Err(ReadError::Io);
         }
         let mut size = 0i64;
@@ -124,14 +125,15 @@ impl Location {
         }
         unsafe { close_file(file) };
         if code != 0 {
-            warn!("{}: read failed 0x{code:08X}", self.display);
+            crate::diagnostics::event(11,"save read failed: file / stage / SDK result",[self.tag(),1,code,0]);
             return Err(ReadError::Io);
         }
         if !(0..=bytes.len() as i64).contains(&size) {
+            crate::diagnostics::event(11,"save INI too large: file / stage / bytes / limit",[self.tag(),3,size as u32,bytes.len() as u32]);
             return Err(ReadError::TooLarge);
         }
-        let text = core::str::from_utf8(&bytes[..size as usize]).map_err(|_| ReadError::Utf8)?;
-        info!("{}: loaded", self.display);
+        let text = core::str::from_utf8(&bytes[..size as usize]).map_err(|_|{crate::diagnostics::event(11,"save INI invalid UTF-8: file / stage",[self.tag(),4,0,0]);ReadError::Utf8})?;
+        crate::diagnostics::event(10,"INI loaded: file / stage / bytes",[self.tag(),1,size as u32,0]);
         Ok(text)
     }
 
@@ -190,12 +192,12 @@ impl Location {
         if code != 0 {
             return self.failed(code, "Could not commit MHGU save INI. See Forge log.");
         }
-        info!("{}: saved", self.display);
+        crate::diagnostics::event(10,"INI saved: file / stage / bytes",[self.tag(),2,text.len() as u32,0]);
         Ok(())
     }
 
     fn failed(&self, code: u32, message: &'static str) -> Result<(), &'static str> {
-        warn!("{}: save failed 0x{code:08X}", self.display);
+        crate::diagnostics::event(11,"save write/commit failed: file / stage / SDK result",[self.tag(),2,code,0]);
         Err(message)
     }
 }

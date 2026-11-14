@@ -11,8 +11,8 @@ unsafe extern "C"{
 pub struct File{handle:Handle,bytes:u64}
 impl File{
  pub fn open(path:&CStr)->Result<Self,()>{unsafe{
-  let mut handle=Handle(0);if open(&mut handle,path.as_ptr(),1)!=0{return Err(())}
-  let mut bytes=0;let result=size(&mut bytes,handle);if result!=0||bytes<0{close(handle);return Err(())}
+  let mut handle=Handle(0);let result=open(&mut handle,path.as_ptr(),1);if result!=0{crate::diagnostics::event(7,"description file open SDK result",[0,result,0,0]);return Err(())}
+  let mut bytes=0;let result=size(&mut bytes,handle);if result!=0||bytes<0{close(handle);crate::diagnostics::event(7,"description file size SDK result",[1,result,bytes as u32,0]);return Err(())}
   Ok(Self{handle,bytes:bytes as u64})
  }}
 }
@@ -20,7 +20,7 @@ impl crate::language_pack::Source for File{
  fn len(&self)->u64{self.bytes}
  fn read(&mut self,offset:u64,bytes:&mut[u8])->Result<(),()>{
   if offset.checked_add(bytes.len() as u64).is_none_or(|end|end>self.bytes){return Err(())}
-  if unsafe{read(self.handle,offset as i64,bytes.as_mut_ptr().cast(),bytes.len())}==0{Ok(())}else{Err(())}
+  let result=unsafe{read(self.handle,offset as i64,bytes.as_mut_ptr().cast(),bytes.len())};if result==0{Ok(())}else{crate::diagnostics::event(7,"description file read SDK result / offset / length",[2,result,offset as u32,bytes.len() as u32]);Err(())}
  }
 }
 impl Drop for File{fn drop(&mut self){unsafe{close(self.handle)}}}

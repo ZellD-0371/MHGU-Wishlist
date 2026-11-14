@@ -29,7 +29,7 @@ fn smith_materials(owner:u32)->u32{
  let resolved=selected.resolve(RECIPES,crate::generated::ARMOR_UPGRADES);
  let key=(selected.list_kind as u32).wrapping_mul(16777619)^(selected.id as u32).wrapping_mul(65537)^(selected.level_index as u32).wrapping_mul(257)^selected.group as u32;
  if selected.id!=0&&LAST_SELECTION.swap(key,Ordering::Relaxed)!=key{
-  forge::log::prelude::info!("[wishlist] smithy list={} id={} level_index={} group={} points={} matched={}",selected.list_kind,selected.id,selected.level_index,selected.group,selected.points,resolved.is_some());
+  crate::diagnostics::event(14,"smithy selection: list / ID / level index / resolved (0 unavailable)",[selected.list_kind as u32,selected.id as u32,selected.level_index as u32,u32::from(resolved.is_some())]);
  }
  if let Some(r)=resolved{
   let base=STATE.with(|s|s.base);
@@ -67,14 +67,10 @@ pub fn install(base:u32)->bool{
 }
 pub fn inventory(base:u32,stock:&mut [u32;4096])->bool{
  // Globals referenced by the game's own combined pouch+box counter (+54FE8C).
- let box_ptr=unsafe{rd(base+0x1858438)};let pouch=unsafe{rd(base+0x18584b8)};
- if !valid(box_ptr)||!valid(pouch){return false}
- // Read the decoded arrays directly. The box has at most 2300 slots; the pouch has 50.
- // Reading every allocated slot avoids calling the O(n) native counter for every item.
- stock.fill(0);
- for (p,count) in [(box_ptr,2300),(pouch,50)]{for i in 0..count{
-  let id=unsafe{half(p+0x1a+i*4)} as usize;let n=unsafe{half(p+0x1c+i*4)} as u32;
-  if id>=2992||n>99{return false}
-  if id>0{stock[id]+=n}
- }}true
+ let pointers=unsafe{[rd(base+0x1858438),rd(base+0x18584b8)]};
+ if !valid(pointers[0])||!valid(pointers[1]){crate::diagnostics::event(1,"inventory unavailable: box/pouch pointers",[1,pointers[0],pointers[1],0]);return false}
+ match crate::inventory::collect(stock,|source,slot|{let p=pointers[source as usize]+slot*4;unsafe{(half(p+0x1a),half(p+0x1c))}}){
+  Ok(())=>{if crate::diagnostics::enabled(){crate::diagnostics::event(1,"inventory ready: distinct items / total units",[0,stock.iter().filter(|n|**n>0).count() as u32,stock.iter().sum(),0]);}true},
+  Err(e)=>{crate::diagnostics::event(1,"inventory rejected: source (2 box / 3 pouch), slot (0-based), item ID, count",[e.source+2,e.slot,e.id as u32,e.count as u32]);false}
+ }
 }

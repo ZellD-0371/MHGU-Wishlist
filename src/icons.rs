@@ -7,6 +7,7 @@ static LAYOUT:AtomicUsize=AtomicUsize::new(0);
 pub fn set_layout(layout:usize){LAYOUT.store(layout.min(2),Ordering::Relaxed);}
 static mut TEXTURE:Option<ImTextureRef>=None;
 pub fn init(){unsafe{
+ crate::diagnostics::init_status(64,false);
  let file=sys::igImFileOpen(c"app:/nativeNX/plugins/wishlist/wishlist-atlas.rgba".as_ptr(),c"rb".as_ptr());
  if file.is_null(){forge::log::prelude::error!("[wishlist] HD atlas file missing");return}
  let expected=sys::igImFileGetSize(file);
@@ -16,8 +17,9 @@ pub fn init(){unsafe{
  let pixels=sys::ImTextureData_GetPixels(texture);if pixels.is_null(){sys::igImFileClose(file);sys::ImTextureData_destroy(texture);return}
  let read=sys::igImFileRead(pixels,1,expected,file);sys::igImFileClose(file);
  if read!=expected{sys::ImTextureData_destroy(texture);forge::log::prelude::error!("[wishlist] HD atlas read failed");return}
+ crate::diagnostics::init_status(64,true);
  ATLAS_UV_HEIGHT.store(atlas.uv_height as usize,Ordering::Release);sys::igRegisterUserTexture(texture);TEXTURE=Some(sys::ImTextureData_GetTexRef(texture));
- forge::log::prelude::info!("[wishlist] {} atlas loaded ({} x {}, {} bytes)",if atlas.low_memory{"LowMemory"}else{"HD"},atlas.width,atlas.height,expected);
+ if crate::diagnostics::enabled(){forge::log::prelude::info!("[wishlist] {} atlas loaded ({} x {}, {} bytes)",if atlas.low_memory{"LowMemory"}else{"HD"},atlas.width,atlas.height,expected);}
 }}
 
 pub fn draw(d:DrawList,tile:usize,x:f32,y:f32,w:f32,h:f32,tint:u32,flip:bool){

@@ -106,3 +106,5 @@ pub const SORT_CATEGORIES:[Label;6]=[
 pub const SORT_WAIT:Label=["Checking material counts. Please try again shortly.","正在确认素材数量，请稍后重试。","正在確認素材數量，請稍後重試。","素材数を確認中です。しばらくしてから再試行してください。","소재 정보를 확인하고 있습니다. 잠시 후 다시 시도하십시오.","Materialbestand wird geprüft. Bitte gleich erneut versuchen.","Vérification des matériaux. Réessayez dans un instant.","Verifica dei materiali in corso. Riprova tra poco.","Comprobando materiales. Inténtalo de nuevo en un momento."];
 
 pub const LANGUAGE_FAILED:Label=["Language resources could not be loaded. The previous language is retained.","无法加载语言资源，已保留原语言。","無法載入語言資源，已保留原語言。","言語データを読み込めませんでした。以前の言語を維持します。","언어 리소스를 불러오지 못했습니다. 기존 언어를 유지합니다.","Sprachdateien konnten nicht geladen werden. Die bisherige Sprache bleibt aktiv.","Impossible de charger les ressources. La langue précédente est conservée.","Impossibile caricare la lingua. Rimane attiva quella precedente.","No se pudo cargar el idioma. Se mantiene el anterior."];
+
+pub const ENABLE_LOGGING:Label=["Enable logging","启用日志记录","啟用日誌記錄","ログ記録を有効にする","로그 기록 활성화","Protokollierung aktivieren","Activer la journalisation","Abilita registrazione log","Activar registro de diagnóstico"];

@@ -49,6 +49,6 @@ pub fn update(profile:usize){
  if !changed{return}
  match storage::character(profile).save(&next.encode_character()){
   Ok(())=>STATE.with(|s|{s.list=next;s.notices.retain_registered(&s.list);s.status=0;}),
-  Err(_)=>{for value in values{enqueue(value)}STATE.with(|s|s.status=3);}
+  Err(_)=>{crate::diagnostics::event(8,"auto removal save failed; retry queued",[profile as u32,values.iter().filter(|v|**v!=0).count() as u32,0,0]);for value in values{enqueue(value)}STATE.with(|s|s.status=3);}
  }
 }
