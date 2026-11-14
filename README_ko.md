@@ -47,8 +47,8 @@ mods/
                     ├── wishlist-atlas.rgba
                     └── languages/
                         ├── font.shared.otf
-                        ├── names.*.bin
-                        └── text.*.bin
+						├── text.en.bin … text.es.bin
+						├── names.en.bin … names.es.bin
 ```
 
 ## 사용 방법
