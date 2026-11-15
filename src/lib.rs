@@ -3,7 +3,7 @@ extern crate alloc;
 mod name_data;mod language;mod language_pack;mod language_ui;mod description_file;
 mod diagnostics;mod inventory;mod sorting;mod atlas;mod text_cache;mod material_cache;mod font_validation;
 mod binding_model;mod bindings;
-mod hook_guard;
+mod hook_guard;mod button_prompts;mod menu_buttons;mod input_chain;mod native_modal;
 mod hud_layout;
 mod model;mod generated;mod locales;mod native;mod controller;mod storage;mod ui;mod smithy;mod equipment;mod navigation;mod sound;mod icons;mod interaction;mod session;mod profiles;mod text_blob;mod text_data;mod presentation;mod game_menu;mod sound_cues;mod notifications;mod badge_model;mod native_badges;mod completed;
 use core::{cell::UnsafeCell,sync::atomic::{AtomicBool,Ordering},ffi::c_void};
@@ -34,21 +34,42 @@ static STATE:Shared=Shared{lock:AtomicBool::new(false),data:UnsafeCell::new(None
 #[forge::entry]
 fn main(){
  let base=forge::mem::text_addr();STATE.with(|s|s.base=base);
+ info!("[wishlist-debug] entry, main base=0x{:08x}",base);
+ info!("[wishlist-debug] stage native");
  if !{let ok=native::install(base);diagnostics::init_status(1,ok);ok}{error!("[wishlist] MHGU global 1.4.0 signatures rejected; disabled");return}
+ info!("[wishlist-debug] stage native_badges");
  if !{let ok=native_badges::install(base);diagnostics::init_status(2,ok);ok}{error!("[wishlist] native icon signatures rejected; badges disabled");}
+ info!("[wishlist-debug] stage completed");
  if !{let ok=completed::install(base);diagnostics::init_status(4,ok);ok}{error!("[wishlist] production completion signatures rejected; auto removal disabled");}
  #[cfg(feature="debug-ui")]
  sound::install(base);
+ info!("[wishlist-debug] stage game_menu");
  if !{let ok=game_menu::install(base);diagnostics::init_status(8,ok);ok}{error!("[wishlist] native + menu check failed; controller list shortcut disabled");}
+ info!("[wishlist-debug] stage session");
  if !{let ok=session::install(base);diagnostics::init_status(16,ok);ok}{error!("[wishlist] character session signatures rejected");return}
+ info!("[wishlist-debug] stage controller");
  let input_ready=controller::install(base);diagnostics::init_status(32,input_ready);
+ info!("[wishlist-debug] controller installed={}",input_ready);
  STATE.with(|s|{s.installed=true;s.input_ready=input_ready;});
  if !input_ready{error!("[wishlist] input capture failed; opening disabled");}
+ info!("[wishlist-debug] entry complete");
  if crate::diagnostics::enabled(){info!("[wishlist] v{}; steel workshop UI; 9 languages; 48 slots; R3 register / L3+R3 list",env!("CARGO_PKG_VERSION"));}
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn forge_onUpdate(dt:f32){
- let (base,ready)=STATE.with(|s|(s.base,s.installed));if !ready{return}
+ let (base,installed)=STATE.with(|s|(s.base,s.installed));if !installed{return}
+ // Some HID imports remain unresolved until a pad style is actually used.
+ // Keep input disabled until both the menu hook and at least one import work.
+ let now_ready=controller::retry(base);
+ let changed=STATE.with(|s|{
+  if s.input_ready==now_ready{return false}
+  s.input_ready=now_ready;
+  true
+ });
+ if changed{
+  diagnostics::init_status(32,now_ready);
+  info!("[wishlist-input] input ready changed to {}",now_ready);
+ }
  sound::update(base);
  if !STATE.with(|s|s.settings_loaded){let mut bytes=[0;storage::MAX_BYTES];match storage::WISHLIST.read(&mut bytes){Ok(text)=>match List::decode(text){Ok(list)=>STATE.with(|s|{s.list.copy_preferences(&list);s.settings_loaded=true;}),Err(())=>diagnostics::event(3,"settings INI parse failed",[0,0,0,0])},Err(e)=>diagnostics::event(3,"settings INI read failed (error enum)",[1,e as u32,0,0])}}
  let logging=STATE.with(|s|s.list.diagnostics);diagnostics::set_enabled(logging);diagnostics::tick(dt);

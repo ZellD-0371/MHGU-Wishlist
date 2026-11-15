@@ -1,3 +1,4 @@
+extern crate alloc;
 #[path="../src/binding_model.rs"]mod binding_model;
 #[path="../src/sorting.rs"]mod sorting;
 #[path="../src/model.rs"]mod model;
@@ -609,3 +610,11 @@ fn stock_decoder_reports_unrelated_invalid_slot_and_recovers() {
     assert_eq!(skip_stock[3041], 0);
     assert_eq!(skip_stock[42], 8);
 }
+
+#[path="../src/button_prompts.rs"]mod button_prompts;
+
+#[path="../src/menu_buttons.rs"]mod menu_buttons;
+
+#[path="../src/input_chain.rs"]mod input_chain;
+
+#[path="../src/native_modal.rs"]mod native_modal;

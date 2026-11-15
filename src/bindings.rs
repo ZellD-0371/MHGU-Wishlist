@@ -9,7 +9,13 @@ pub fn capturing()->bool{CAPTURING.load(Ordering::Acquire)}
 pub fn publish(raw:u32){RAW.store(raw,Ordering::Release);}
 pub fn snapshot(buttons:u32,lx:i32,ly:i32,rx:i32,ry:i32)->u32{let mut v=buttons&0xffff;for (x,y,bit) in [(lx,ly,16),(rx,ry,20)]{if x<=-18000{v|=1<<bit}if x>=18000{v|=1<<(bit+2)}if y>=18000{v|=1<<(bit+1)}if y<=-18000{v|=1<<(bit+3)}}v}
 pub fn label(chord:u32)->String{let names=["A","B","X","Y","L3","R3","L","R","ZL","ZR","+","-","D Left","D Up","D Right","D Down","L Stick Left","L Stick Up","L Stick Right","L Stick Down","R Stick Left","R Stick Up","R Stick Right","R Stick Down"];let mut out=String::new();for (i,n) in names.iter().enumerate(){if chord&(1<<i)!=0{if !out.is_empty(){out.push_str(" + ");}out.push_str(n);}}out}
-pub fn keyboard_active()->bool{use forge::input::Input;Input::is_alt_down()||Input::is_ctrl_down()||Input::is_shift_down()||(4..=231).any(|k|unsafe{hid_down(k)})}
+pub fn keyboard_active()->bool{
+ // Native Forge cannot identify whether a host keyboard synthesized an Npad
+ // sample. Do not let stale host modifiers lock a real pad after Alt+Tab.
+ if !crate::input_chain::keyboard_blocks_pad(crate::button_prompts::is_recomp(),true){return false}
+ use forge::input::Input;
+ Input::is_alt_down()||Input::is_ctrl_down()||Input::is_shift_down()||(4..=231).any(|k|unsafe{hid_down(k)})
+}
 // Keyboard bindings contain one HID key plus Ctrl/Shift/Alt modifiers.
 #[cfg(feature="keyboard-input")]
 pub const CTRL:u32=1<<16;

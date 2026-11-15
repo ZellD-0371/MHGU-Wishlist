@@ -76,7 +76,32 @@ impl Canvas{
   if let Some(font)=unsafe{FONT}{self.draw.add_text_with_font(&font,pixels,self.p(tx,ty),color,text)}else{self.draw.add_text(self.p(tx,ty),color,text)}
   self.draw.pop_clip_rect();
  }
- fn icon(&self,tile:usize,x:f32,y:f32,size:f32,tint:u32){let p=self.p(x,y);crate::icons::draw(self.draw,tile,p.x,p.y,self.pixels(size),self.pixels(size),tint,false);}
+ fn raw_icon(&self,tile:usize,x:f32,y:f32,size:f32,tint:u32){let p=self.p(x,y);crate::icons::draw(self.draw,tile,p.x,p.y,self.pixels(size),self.pixels(size),tint,false);}
+ fn icon(&self,mut tile:usize,x:f32,y:f32,size:f32,tint:u32){
+  // Each sprite is tied to its *menu action*, not a numeric array position.
+  // The final six menu actions have no native artwork except L3/R3.
+  let icon_actions=[
+   (crate::icons::A,0), (crate::icons::B,1),
+   (crate::icons::X,2), (crate::icons::Y,3),
+   (crate::icons::L,4), (crate::icons::R,5),
+   (crate::icons::ZL,6), (crate::icons::ZR,7),
+   (crate::icons::DPAD_LEFT,8), (crate::icons::DPAD,9),
+   (crate::icons::L3,14), (crate::icons::R3,15),
+  ];
+  if let Some((_,action))=icon_actions.iter().find(|(id,_)|*id==tile){
+   match crate::button_prompts::get(*action){
+    crate::button_prompts::Prompt::Original=>{},
+    crate::button_prompts::Prompt::Position(p)=>tile=crate::button_prompts::icon_slot(p,0),
+    crate::button_prompts::Prompt::Text(text)=>{
+     self.rect(x,y,size,size,RAISED);
+     self.box_text(x,y,size,size,size*0.65,WHITE,&text,true);
+     return
+    }
+   }
+  }
+  self.raw_icon(tile,x,y,size,tint);
+ }
+
  fn gear(&self,r:Recipe,x:f32,y:f32,size:f32){self.gear_alpha(r,x,y,size,1.);}
  fn gear_alpha(&self,r:Recipe,x:f32,y:f32,size:f32,alpha:f32){if r.kind==25{let (tile,tint)=crate::icons::material(r.id);self.icon(tile,x,y,size,crate::presentation::alpha(tint,alpha));}else{self.icon(crate::icons::equipment(r.kind),x,y,size,crate::presentation::alpha(crate::equipment::icon_tint(r),alpha));}}
  fn sprite(&self,tile:usize,x:f32,y:f32,w:f32,h:f32,tint:u32,flip:bool){let p=self.p(x,y);crate::icons::draw(self.draw,tile,p.x,p.y,w*self.scale,h*self.scale,tint,flip);}
@@ -84,7 +109,7 @@ impl Canvas{
   self.bar(x,y,160.,usize::MAX,"");let count=chord.count_ones() as f32;let width=(count*18.+(count-1.).max(0.)*5.).min(90.);let size=18_f32.min((width-(count-1.).max(0.)*5.)/count.max(1.));let mut px=x+8.;
   for bit in 0..24{if chord&(1<<bit)==0{continue}if px>x+8.{self.box_text(px-5.,y,5.,28.,13.,WHITE,"+",true);}
    let tile=match bit{0=>Some(crate::icons::A),1=>Some(crate::icons::B),2=>Some(crate::icons::X),3=>Some(crate::icons::Y),4=>Some(crate::icons::L3),5=>Some(crate::icons::R3),6=>Some(crate::icons::L),7=>Some(crate::icons::R),8=>Some(crate::icons::ZL),9=>Some(crate::icons::ZR),12=>Some(crate::icons::DPAD_LEFT),14=>Some(crate::icons::DPAD),_=>None};
-   if let Some(tile)=tile{self.icon(tile,px,y+(28.-size)*0.5,size,WHITE);}else{let text=match bit{10=>"+",11=>"−",13=>"↑",15=>"↓",16=>"L←",17=>"L↑",18=>"L→",19=>"L↓",20=>"R←",21=>"R↑",22=>"R→",_=>"R↓"};self.rect(px,y+(28.-size)*0.5,size,size,RAISED);self.box_text(px,y,size,28.,16.,WHITE,text,true);}px+=size+5.;
+   if let Some(tile)=tile{self.raw_icon(tile,px,y+(28.-size)*0.5,size,WHITE);}else{let text=match bit{10=>"+",11=>"−",13=>"↑",15=>"↓",16=>"L←",17=>"L↑",18=>"L→",19=>"L↓",20=>"R←",21=>"R↑",22=>"R→",_=>"R↓"};self.rect(px,y+(28.-size)*0.5,size,size,RAISED);self.box_text(px,y,size,28.,16.,WHITE,text,true);}px+=size+5.;
   }self.box_text(x+width+10.,y,142.-width,28.,24.,WHITE,&label,false);
  }
  fn bar(&self,x:f32,y:f32,w:f32,button:usize,label:&str){
@@ -220,7 +245,7 @@ fn events(events:u32){
   if s.preview{
    if events&c::BACK!=0{s.mode=0;s.preview=false;sound::cue(Cue::Close);return 0}
    if s.mode==2&&events&c::TAB!=0{s.tab=1-s.tab;sound::cue(Cue::Tab);}
-   if events&c::DETAIL!=0{s.detail_page=1-s.detail_page;sound::cue(Cue::Tab);}
+   if s.tab==0&&selected_recipe(s).is_some()&&events&c::DETAIL!=0{s.detail_page=1-s.detail_page;sound::cue(Cue::Tab);}
    if events&(c::PREV|c::NEXT|c::TAB_PREV|c::TAB_NEXT)!=0{
     s.preview_panel=(s.preview_panel+if events&(c::NEXT|c::TAB_NEXT)!=0{1}else{7})%8;s.mode=match s.preview_panel{0=>2,1|2=>1,3=>5,4=>6,5=>3,6=>4,_=>2};s.focus.material=s.preview_panel==7;s.focus.index=0;s.preview_clock=0.;
     sound::cue(if events&(c::TAB_PREV|c::TAB_NEXT)!=0{Cue::Tab}else{Cue::Page});
@@ -235,10 +260,11 @@ fn events(events:u32){
    if events&(c::PREV|c::NEXT|c::UP|c::DOWN)!=0{s.focus.yes=!s.focus.yes;sound::cue(Cue::Cursor);}
    if events&c::ACCEPT!=0{if s.focus.yes{return if s.mode==3{1}else{2}}s.mode=match s.mode{3=>1,8=>0,_=>2};sound::cue(Cue::Close);}return 0
   }
-  if s.tab==0&&events&c::DETAIL!=0{s.detail_page=1-s.detail_page;sound::cue(Cue::Tab);}
+  if s.tab==0&&selected_recipe(s).is_some()&&events&c::DETAIL!=0{s.detail_page=1-s.detail_page;sound::cue(Cue::Tab);}
   if s.mode==2&&events&(c::TAB|c::TAB_PREV|c::TAB_NEXT)!=0{s.tab=1-s.tab;s.aggregate=crate::interaction::AggregateFocus::default();s.focus.material=false;s.focus.index=0;sound::cue(Cue::Tab);return 0}
   if s.mode==2&&s.tab==1{
    s.material_cache.refresh(&s.list,&s.stock,s.stock_ready,g::PROVISIONS);let totals=s.material_cache.totals();s.aggregate.material=s.aggregate.material.min(totals.len().saturating_sub(1));
+   if totals.is_empty(){return 0}
    let d=if events&c::UP!=0{-1}else if events&c::DOWN!=0{1}else{0};let page=if events&c::PREV!=0{-1}else if events&c::NEXT!=0{1}else{0};
    s.aggregate.material_step(totals.len(),d,page);
    if page!=0{sound::cue(Cue::Page);}else if d!=0{sound::cue(Cue::Cursor);}return 0
@@ -293,6 +319,7 @@ fn aggregate(cv:&Canvas,s:&State)->Option<Recipe>{
  let lang=s.list.language;let totals=s.material_cache.totals();let cursor=s.aggregate.material.min(totals.len().saturating_sub(1));
  cv.line(542.,172.,542.,606.,RULE);
  cv.section(146.,168.,380.,l::MATERIALS[lang]);cv.section(561.,168.,367.,l::TITLE[lang]);
+ if totals.is_empty(){return None}
  let start=cursor/8*8;
  for (row,m) in totals.iter().skip(start).take(8).enumerate(){
   let y=199.+row as f32*35.;let focus=start+row==cursor;let owned=s.stock[m.id as usize];
@@ -353,11 +380,16 @@ fn draw_notice_demo(cv:&Canvas,s:&mut State){
  for (slot,n) in demo.queue.visible(){draw_notice(cv,n.recipe,lang,crate::presentation::NOTICE_DURATION-n.seconds,slot);}
  demo.advance(imgui::get_io().DeltaTime);
 }
+fn selected_recipe(s:&State)->Option<Recipe>{
+ if s.preview&&matches!(s.preview_panel,1|7){s.frozen}
+ else if s.preview&&s.preview_panel==2{None}
+ else{s.list.slots[s.selected].map(|e|e.recipe)}
+}
 fn details(cv:&Canvas,s:&State,r:Option<Recipe>){
  let lang=s.list.language;cv.frame(972.,69.,290.,551.);
  cv.heading(984.,82.,266.,l::DETAILS[lang]);
- cv.icon(crate::icons::ZL,985.,132.,26.,WHITE);cv.center(1023.,129.,188.,25.,WHITE,&format!("{} / 2",s.detail_page+1));cv.icon(crate::icons::ZR,1222.,132.,26.,WHITE);
  let Some(r)=r else{cv.box_text(984.,69.,266.,551.,26.,MUTED,l::NO_EQUIPMENT[lang],true);return};
+ cv.icon(crate::icons::ZL,985.,132.,26.,WHITE);cv.center(1023.,129.,188.,25.,WHITE,&format!("{} / 2",s.detail_page+1));cv.icon(crate::icons::ZR,1222.,132.,26.,WHITE);
  cv.rect(984.,169.,266.,45.,INSET);cv.rect(984.,169.,3.,45.,GOLD);cv.icon_plate(995.,176.,31.);cv.gear(r,997.,178.,27.);cv.box_text(1036.,169.,205.,45.,BODY,GOLD,&name(r,lang),false);
  cv.rect(984.,224.,266.,382.,INSET);
  if s.detail_page==1{
@@ -414,6 +446,7 @@ fn sort_dialog(cv:&Canvas,s:&State){
  if d.message>0{cv.paragraph(x+18.,535.,w-36.,45.,21.,RED,if d.message==1{l::SORT_WAIT[lang]}else{l::SAVE_FAILED[lang]});}
 }
 pub fn render(){
+ crate::button_prompts::refresh(imgui::get_io().DeltaTime);
  let menu=forge::graphics::Graphics::is_menu_visible();let capturing=crate::bindings::capturing();
  let pad_allowed=crate::bindings::pad_shortcuts_allowed();
  let keys=crate::bindings::keyboard_events(menu||capturing);
@@ -447,7 +480,7 @@ pub fn render(){
    for (tab,x,w,label) in [(0,185.,341.,l::LIST[lang]),(1,531.,358.,l::TOTAL[lang])]{cv.rect(x,126.,w,35.,if s.tab==tab{0xff2e302d}else{INSET});cv.rect(x,159.,w,2.,if s.tab==tab{GOLD}else{RULE});cv.box_text(x+8.,126.,w-16.,33.,24.,if s.tab==tab{GOLD}else{MUTED},label,true);}
    cv.icon(crate::icons::L,148.,130.,28.,WHITE);cv.icon(crate::icons::R,897.,130.,28.,WHITE);
   }
-  let selected=s.list.slots[s.selected].map(|e|e.recipe);let selected=if s.preview&&matches!(s.preview_panel,1|7){s.frozen}else if s.preview&&s.preview_panel==2{None}else{selected};
+  let selected=selected_recipe(s);
   if s.tab==0{
    cv.section(146.,198.,320.,l::TITLE[lang]);let start=s.selected/8*8;
    for i in start..start+8{let y=230.+(i-start) as f32*42.;let focus=i==s.selected;
