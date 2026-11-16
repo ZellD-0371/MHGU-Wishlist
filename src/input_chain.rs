@@ -19,24 +19,12 @@ pub fn inner_word(word:u32,owned:bool,latch:&mut u32)->u32{
  if owned{*latch|=word&NAV_WORD;}
  word&!*latch
 }
-// Raw directions are not in the order the chain returns them: the raw word has
-// left and right swapped against the menu result (up/down agree). A direction
-// map, raw bit 0x10<<i -> byte i, converts them. It starts with that swap and is
-// relearned from frames where the chain returns exactly one direction for exactly
-// one raw direction, so a different host remapping is followed too.
-pub const DEFAULT_NAV_MAP:u32=u32::from_le_bytes([0x10,0x80,0x40,0x20]);
-pub fn remap_nav(bits:u32,map:u32)->u32{
- (0..4).filter(|i|bits&(0x10<<i)!=0).fold(0,|out,i|out|((map>>(8*i))&NAV_ACTION))
-}
-pub fn learn_nav(word:u32,mapped:u32,map:u32)->u32{
- let (raw,got)=(translate(word)&NAV_ACTION,mapped&NAV_ACTION);
- if raw.count_ones()!=1||got.count_ones()!=1{return map}
- let mut bytes=map.to_le_bytes();bytes[(raw.trailing_zeros()-4) as usize]=got as u8;u32::from_le_bytes(bytes)
-}
 // The withheld directions come from the raw word; other actions keep the
 // chain's mapping, including the host's optional action layout.
-pub fn owned_actions(mapped:u32,word:u32,raw_only:bool,nav_map:u32)->u32{
- let nav=remap_nav(translate(word)&NAV_ACTION,nav_map);
+pub fn owned_actions(mapped:u32,word:u32,raw_only:bool)->u32{
+ // Raw and translated directions share one order (0x10 up, 0x20 right,
+ // 0x40 down, 0x80 left), so the raw word's directions are used as they are.
+ let nav=translate(word)&NAV_ACTION;
  // A navigation takeover below us (KatSmithy) clears the game's word and refills
  // it from its own Forge input, which we withhold while open: nothing comes back.
  // Then every action, not only directions, comes from the raw word.
@@ -71,12 +59,12 @@ mod tests {
         let mut latch=0;let mut moved=0;
         for word in [0x40,0x0040_0000,0x0010_0010,0x80|0x2000]{
             let mapped=nav_consumer(inner_word(word,true,&mut latch),&mut moved);
-            let actions=owned_actions(mapped,word,false,DEFAULT_NAV_MAP);
-            assert_eq!(actions&NAV_ACTION,remap_nav(translate(word)&NAV_ACTION,DEFAULT_NAV_MAP));
+            let actions=owned_actions(mapped,word,false);
+            assert_eq!(actions&NAV_ACTION,translate(word)&NAV_ACTION);
         }
         assert_eq!(moved,0);
         // Non-direction actions still come from the chain (host layout preserved).
-        assert_eq!(owned_actions(0x4000,0x2000,false,DEFAULT_NAV_MAP)&0x6000,0x4000);
+        assert_eq!(owned_actions(0x4000,0x2000,false)&0x6000,0x4000);
     }
 
     // KatSmithy-like takeover: clears the word and refills it only from its own
@@ -88,7 +76,7 @@ mod tests {
         let mut latch=0;
         for word in [0x2000,0x4000,0x0040_0000,0x8000]{
             let mapped=takeover(inner_word(word,true,&mut latch));
-            assert_eq!(owned_actions(mapped,word,true,DEFAULT_NAV_MAP),(translate(word)&!0xf0)|remap_nav(translate(word)&0xf0,DEFAULT_NAV_MAP));
+            assert_eq!(owned_actions(mapped,word,true),translate(word));
         }
     }
 
@@ -100,21 +88,6 @@ mod tests {
         assert_eq!(inner_word(0x40|0x10,false,&mut latch),0x10);
         assert_eq!(inner_word(0,false,&mut latch),0);
         assert_eq!(inner_word(0x40,false,&mut latch),0x40);
-    }
-
-    #[test]
-    fn raw_left_and_right_are_swapped_by_default_and_relearned(){
-        // Raw 0x20 (right) is the menu's 0x80, raw 0x80 (left) the menu's 0x20.
-        assert_eq!(remap_nav(0x20,DEFAULT_NAV_MAP),0x80);assert_eq!(remap_nav(0x80,DEFAULT_NAV_MAP),0x20);
-        assert_eq!(remap_nav(0x10|0x40,DEFAULT_NAV_MAP),0x50);
-        assert_eq!(owned_actions(0,0x0020_0000,true,DEFAULT_NAV_MAP)&0xf0,0x80); // stick right
-        // A host that keeps raw order is learned from one unambiguous frame.
-        let mut map=learn_nav(0x20,0x20,DEFAULT_NAV_MAP);map=learn_nav(0x80,0x80,map);
-        assert_eq!(remap_nav(0x20,map),0x20);assert_eq!(remap_nav(0x80,map),0x80);
-        // Ambiguous or stripped frames teach nothing.
-        assert_eq!(learn_nav(0x20|0x10,0x80,DEFAULT_NAV_MAP),DEFAULT_NAV_MAP);
-        assert_eq!(learn_nav(0x20,0,DEFAULT_NAV_MAP),DEFAULT_NAV_MAP);
-        assert_eq!(learn_nav(0x20,0x80|0x2000,DEFAULT_NAV_MAP),DEFAULT_NAV_MAP);
     }
 
     #[test]

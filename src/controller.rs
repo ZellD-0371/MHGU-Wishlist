@@ -15,7 +15,6 @@ static RELEASE:AtomicU32=AtomicU32::new(0);
 static mut NATIVE_MODAL:crate::native_modal::Gate=crate::native_modal::Gate::new();
 static SHOULDER_HELD:AtomicU32=AtomicU32::new(0);
 static NAV_RELEASE:AtomicU32=AtomicU32::new(0);
-static NAV_MAP:AtomicU32=AtomicU32::new(crate::input_chain::DEFAULT_NAV_MAP);
 unsafe fn filter(index:usize,state:u32,id:u32){
  let address=ORIGINAL[index].load(Ordering::Acquire);let call:unsafe extern "C" fn(u32,u32)=unsafe{core::mem::transmute(address)};unsafe{call(state,id)};
  if state<0x10000||unsafe{rd(state+32)}&1==0{return}
@@ -75,8 +74,7 @@ fn menu_translate(object:u32,word:u32)->u32{
  let inner=crate::input_chain::inner_word(word,owned,&mut latch);
  NAV_RELEASE.store(latch,Ordering::Release);
  let mapped=original!(object,inner);
- let nav_map=if owned{NAV_MAP.load(Ordering::Acquire)}else{let m=crate::input_chain::learn_nav(word,mapped,NAV_MAP.load(Ordering::Acquire));NAV_MAP.store(m,Ordering::Release);m};
- let mapped=if owned{crate::input_chain::owned_actions(mapped,word,crate::katsmithy::input_wrapped(),nav_map)}else{mapped};
+ let mapped=if owned{crate::input_chain::owned_actions(mapped,word,crate::katsmithy::input_wrapped())}else{mapped};
  let shoulder_word=mapped;
  let shoulder_pressed=shoulder_word&!SHOULDER_HELD.swap(shoulder_word,Ordering::AcqRel);
  STATE.with(|s|{
@@ -84,7 +82,7 @@ fn menu_translate(object:u32,word:u32)->u32{
   let previous=INTERNAL_HELD.swap(mapped,Ordering::AcqRel);let pressed=mapped&!previous;
   let release=RELEASE.load(Ordering::Relaxed)&mapped;
   if overlay{RELEASE.store(0,Ordering::Relaxed);return mapped}
-  if recomp&&s.mode!=0&&!capture{for(mask,event)in [(0x2000,ACCEPT),(0x4000,BACK),(0x1000,DELETE),(0x8000,SORT),(0x20,PREV),(0x10,UP),(0x80,NEXT),(0x40,DOWN)]{if pressed&mask!=0{s.events|=event}}}
+  if recomp&&s.mode!=0&&!capture{for(mask,event)in [(0x2000,ACCEPT),(0x4000,BACK),(0x1000,DELETE),(0x8000,SORT),(0x80,PREV),(0x10,UP),(0x20,NEXT),(0x40,DOWN)]{if pressed&mask!=0{s.events|=event}}}
   if recomp&&s.mode!=0&&!capture {
    let (left,right,detail)=crate::menu_buttons::shoulders(shoulder_pressed,recomp);
    if left{s.events|=TAB_PREV;}if right{s.events|=TAB_NEXT;}if detail{s.events|=DETAIL;}
