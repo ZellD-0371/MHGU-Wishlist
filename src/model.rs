@@ -73,9 +73,11 @@ impl List{
   }out
  }
  pub fn totals(&self)->Vec<Material>{let mut out:Vec<Material>=Vec::new();for e in self.slots.iter().flatten(){for m in e.recipe.totals(){if let Some(v)=out.iter_mut().find(|v|v.id==m.id){v.count+=m.count}else{out.push(m)}}}out.sort_by_key(|m|m.id);out}
+ #[cfg_attr(not(test),allow(dead_code))] // used by the host checks in tools/
  pub fn ordered_totals(&self,stock:&[u32;4096],known:bool)->Vec<Material>{let mut out=self.totals();if known{out.sort_by_key(|m|(stock[m.id as usize]>=m.count,m.id));}out}
  pub fn remove_completed(&mut self,kind:u8,id:u16,level:u8)->bool{let mut changed=false;for i in 0..CAPACITY{if self.slots[i].is_some_and(|e|e.recipe.kind==kind&&e.recipe.id==id&&e.recipe.level==level){self.slots[i]=None;self.costs[i]=0;self.registration[i]=0;changed=true;}}if changed{self.normalize_registration();}changed}
  pub fn registered(&self,recipe:Recipe)->Option<usize>{self.slots.iter().position(|e|e.is_some_and(|e|e.recipe==recipe))}
+ #[cfg_attr(not(test),allow(dead_code))] // used by the host checks in tools/
  pub fn requiring_material(&self,id:u16)->Vec<usize>{
   self.slots.iter().enumerate().filter_map(|(slot,entry)|entry.filter(|e|e.recipe.materials.iter().any(|m|m.id==id&&m.count>0)).map(|_|slot)).collect()
  }

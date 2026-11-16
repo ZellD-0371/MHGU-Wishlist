@@ -150,10 +150,6 @@ impl Canvas{
   self.draw.add_circle_filled(self.p(x+3.,y+3.),4.*self.scale,0xff39bbf3,12);
   self.draw.add_circle_filled(self.p(x+2.,y+2.),1.2*self.scale,0xffb1ecff,8);
  }
- fn bold(&self,x:f32,y:f32,w:f32,size:f32,color:u32,text:&str){self.text(x,y,w,size,color,text);self.text(x+1./self.scale,y,w,size,color,text);}
- fn plus(&self,x:f32,y:f32,w:f32,h:f32){
-  self.box_text(x,y,w,h,18.,WHITE,"+",true);
- }
  fn pager(&self,cx:f32,y:f32,page:usize,pages:usize){
   let text=format!("◀ {} / {} ▶",page,pages.max(1));let width=self.measure(24.,&text)+4.;let left=cx-width*0.5;let icon=25.;let gap=16.;
   self.box_text(left,y,width,icon,24.,WHITE,&text,true);
@@ -365,6 +361,7 @@ fn draw_notice(cv:&Canvas,r:Recipe,progress:Option<crate::notifications::Progres
  cv.box_bold(x+16.,y+38.,w-32.,34.,body_size,crate::presentation::alpha(0xff35a5ff,opacity),body,true);
 
 }
+#[cfg_attr(not(feature="debug-ui"),allow(dead_code))] // debug-ui builds
 fn start_notice_demo(s:&mut State){
  let mut recipes=Vec::new();for entry in s.list.slots.iter().flatten(){if !recipes.contains(&entry.recipe){recipes.push(entry.recipe);}if recipes.len()==4{break}}
  for r in g::RECIPES{if recipes.len()==4{break}if !recipes.contains(r){recipes.push(*r);}}
@@ -429,7 +426,7 @@ fn draw_pins(native_cv:&Canvas,s:&crate::State){
  let armor=crate::katsmithy::armor_view(s.base);let tree=crate::katsmithy::weapon_view(s.base);
  for marker in crate::native_badges::markers_with(&s.list,s.base,armor.is_none()&&tree.is_none()){native_cv.pin(marker.x,marker.y);}
  // KatSmithy's lists use its own centered 1280x720 transform, not the game HUD's.
- let io=imgui::get_io();let Some((ox,oy,scale))=crate::katsmithy_model::transform(io.DisplaySize.x,io.DisplaySize.y) else{return};
+ let io=imgui::get_io();let Some((ox,oy,scale))=crate::katsmithy::transform(io.DisplaySize.x,io.DisplaySize.y) else{return};
  let kat=Canvas{scale,ox,oy,draw:native_cv.draw};
  if let Some(view)=armor{for (x,y) in crate::katsmithy::armor_pins(view,&s.list){kat.pin(x,y);}}
  if let Some(view)=tree{for (x,y) in crate::katsmithy::weapon_pins(view,&s.list){kat.pin(x,y);}}
@@ -518,7 +515,7 @@ pub fn render(){
   else{cv.paragraph(34.,640.,568.,61.,BODY,WHITE,status);}
   // Dedicated black prompt bars sit left of the game's native right-hand prompts.
   if registering{cv.bar(925.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(925.,676.,160.,crate::icons::B,l::BACK[lang]);}
-  else{if s.tab==0&&!s.focus.material&&s.sort.is_none(){cv.bar(755.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(925.,642.,160.,crate::icons::X,l::DELETE[lang]);if s.mode==2&&s.list.slots.iter().any(Option::is_some){cv.bar(925.,676.,160.,crate::icons::Y,l::SORT[lang]);}}cv.bar(755.,676.,160.,crate::icons::B,l::BACK[lang]);}
+  else{if s.tab==0&&!s.focus.material&&s.sort.is_none(){cv.bar(755.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(925.,642.,160.,crate::icons::X,l::DELETE[lang]);if matches!(s.mode,2|4)&&s.list.slots.iter().any(Option::is_some){cv.bar(925.,676.,160.,crate::icons::Y,l::SORT[lang]);}}cv.bar(755.,676.,160.,crate::icons::B,l::BACK[lang]);}
   if matches!(s.mode,3|4|5){confirmation(&cv,s);}
   // A modal covers the detail page: no skill panel over it.
   if matches!(s.mode,3|4|5)||s.sort.is_some(){crate::skill_view::hide();}

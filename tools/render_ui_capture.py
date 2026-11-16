@@ -76,7 +76,7 @@ mod icons{
 }
 mod text_data{pub fn init(){}pub fn description(k:u8,id:u16,l:usize)->&'static str{super::text_blob::get(include_bytes!(concat!(env!("WISHLIST_SRC"),"/../assets/ui-text.bin")),k,id,l)}}
 mod native_badges{pub struct Marker{pub x:f32,pub y:f32}pub fn available()->bool{false}pub fn markers(_: &super::List,_:u32)->Vec<Marker>{vec![]}pub fn markers_with(_: &super::List,_:u32,_:bool)->Vec<Marker>{vec![]}}
-mod katsmithy{#[derive(Clone,Copy)]pub struct ArmorView;#[derive(Clone,Copy)]pub struct WeaponView;pub fn armor_view(_:u32)->Option<ArmorView>{None}pub fn weapon_view(_:u32)->Option<WeaponView>{None}pub fn tree_dialog(_:u32)->bool{false}pub fn armor_pins(_:ArmorView,_:&super::List)->Vec<(f32,f32)>{vec![]}pub fn weapon_pins(_:WeaponView,_:&super::List)->Vec<(f32,f32)>{vec![]}}
+mod katsmithy{#[derive(Clone,Copy)]pub struct ArmorView;#[derive(Clone,Copy)]pub struct WeaponView;pub fn armor_view(_:u32)->Option<ArmorView>{None}pub fn weapon_view(_:u32)->Option<WeaponView>{None}pub fn tree_dialog(_:u32)->bool{false}pub fn transform(w:f32,h:f32)->Option<(f32,f32,f32)>{super::katsmithy_model::transform(w,h)}pub fn armor_pins(_:ArmorView,_:&super::List)->Vec<(f32,f32)>{vec![]}pub fn weapon_pins(_:WeaponView,_:&super::List)->Vec<(f32,f32)>{vec![]}}
 mod skill_view{pub fn show(_:u8,_:u16,_:u8,_:f32,_:f32,_:f32){}pub fn open(){}pub fn hide(){}pub fn overlay(){}pub fn begin_frame(){}}
 mod game_menu{pub fn visible(_:u32)->bool{false}}
 mod sound{pub enum Cue{Open}pub fn cue(_:Cue){}}use sound::Cue;

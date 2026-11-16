@@ -26,6 +26,10 @@ static TREE_AT:AtomicU32=AtomicU32::new(0);
 static ARMOR_WAIT:AtomicU32=AtomicU32::new(0);
 static TREE_WAIT:AtomicU32=AtomicU32::new(0);
 const RESCAN_CALLS:u32=120;
+// From KatSmithy's tree renderer (see katsmithy_model::renderer): where it keeps
+// the screen transform it draws with, and whether its layout constants match.
+static VIEW_AT:AtomicU32=AtomicU32::new(0);
+static TREE_LAYOUT_OK:AtomicBool=AtomicBool::new(false);
 static STICK_LATCH:[AtomicBool;2]=[const{AtomicBool::new(false)};2];
 #[repr(C)]#[derive(Default)]
 struct Map{base:u64,size:u64,kind:u32,attr:u32,perm:u32,ipc:u32,device:u32,pad:u32}
@@ -135,6 +139,14 @@ pub fn install_once(){
  else{warn!("[wishlist] KatSmithy data region unreadable; its lists keep the game's pins");}
  if !readable(base,image){warn!("[wishlist] KatSmithy image unreadable; input left untouched");return}
  let bytes=unsafe{core::slice::from_raw_parts(base as *const u8,image as usize)};
+ match model::renderer(bytes,unsafe{word(base+0x24)} as usize){
+  Some(r)=>{
+   if let Some(view)=r.view{VIEW_AT.store(base+view as u32,Ordering::Release);}
+   TREE_LAYOUT_OK.store(r.constants,Ordering::Release);
+   info!("[wishlist] KatSmithy tree renderer at +{:X}: transform {}, layout constants {}",r.at,if r.view.is_some(){"found"}else{"not found (centered 1280x720 assumed)"},if r.constants{"match"}else{"changed; weapon pins off"});
+  }
+  None=>warn!("[wishlist] KatSmithy tree renderer not found; weapon pins off"),
+ }
  let slots=model::import_slots(bytes,base,INPUT_IMPORTS);
  let detours=[is_down as *const () as u32,is_pressed as *const () as u32,stick_left as *const () as u32,stick_right as *const () as u32];
  // isPressed's latch also needs isDown; wrap all four or none.
@@ -218,7 +230,17 @@ fn tree(base:u32)->Option<(&'static [u8],model::TreeState,u16)>{
 pub fn tree_dialog(base:u32)->bool{
  tree(base).is_some_and(|(m,t,_)|model::tree_u32(m,t,model::TREE_DIALOG)==Some(1))
 }
+/// KatSmithy's screen transform (origin x, origin y, scale) for its 1280x720 space:
+/// read from where its renderer keeps it, so its own handling of 21:9, 32:9 and
+/// 16:10 is followed. Without that location, the centered 1280x720 fit is used.
+pub fn transform(width:f32,height:f32)->Option<(f32,f32,f32)>{
+ let at=VIEW_AT.load(Ordering::Acquire);
+ if at==0{return model::transform(width,height)}
+ let f=|o:u32|f32::from_bits(unsafe{rd(at+o)});let (x,y,s)=(f(4),f(8),f(12));
+ (x.is_finite()&&y.is_finite()&&s.is_finite()&&s>0.01&&s<100.).then_some((x,y,s))
+}
 pub fn weapon_view(base:u32)->Option<WeaponView>{
+ if !TREE_LAYOUT_OK.load(Ordering::Acquire){return None}
  let (m,tree,kind)=tree(base)?;
  if model::tree_u32(m,tree,model::TREE_MODE)?!=1||model::tree_u32(m,tree,model::TREE_DIALOG)?==1{return None}
  let scroll_x=f32::from_bits(model::tree_u32(m,tree,model::TREE_SCROLL_X)?);let scroll_y=f32::from_bits(model::tree_u32(m,tree,model::TREE_SCROLL_Y)?);

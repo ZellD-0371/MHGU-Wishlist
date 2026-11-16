@@ -140,6 +140,77 @@ pub fn transform(width:f32,height:f32)->Option<(f32,f32,f32)>{
  let scale=(width/1280.).min(height/720.);Some((width*0.5-640.*scale,(height-720.*scale)*0.5,scale))
 }
 
+// KatSmithy's weapon tree renderer, found from code rather than by address: the
+// function that logs "FULL sel(id*100+lv)". From it come the screen transform it
+// draws with and a check that its tree layout constants are the ones used here.
+pub const RENDERER_LOG:&[u8]=b"FULL sel(id*100+lv)";
+/// Layout constants of the tree panel (cell, half cell, panel size/top, label
+/// column, minimum scale) that must all appear in the renderer's literal pool.
+pub const TREE_CONSTANTS:[f32;7]=[54.,36.,702.,590.,62.,126.,0.85];
+const RENDERER_BEFORE:usize=0x3000;const RENDERER_AFTER:usize=0x6000;
+fn find_bytes(hay:&[u8],needle:&[u8])->Option<usize>{if needle.is_empty()||hay.len()<needle.len(){return None}(0..=hay.len()-needle.len()).find(|&i|&hay[i..i+needle.len()]==needle)}
+fn word_at(m:&[u8],at:usize)->Option<u32>{u32_at(m,at)}
+/// PC-relative address loads: `ldr rT,[pc,#lit]` then `add rD,pc,rT` within 16
+/// instructions. Yields (add address, destination register, target).
+fn pic_loads(m:&[u8],from:usize,to:usize,mut f:impl FnMut(usize,u32,usize)->bool)->bool{
+ let to=to.min(m.len().saturating_sub(4));let mut p=from&!3;
+ while p<to{
+  let w=word_at(m,p).unwrap_or(0);
+  if w>>28==0xe&&(w&0x0f7f_0000)==0x051f_0000{
+   let rt=(w>>12)&15;let imm=(w&0xfff) as usize;
+   let lit=if w&(1<<23)!=0{p+8+imm}else{(p+8).wrapping_sub(imm)};
+   if let Some(v)=word_at(m,lit){
+    for q in (p+4..(p+64).min(to)).step_by(4){
+     let x=word_at(m,q).unwrap_or(0);
+     if x>>28==0xe&&(x&0x0fff_0ff0)==0x008f_0000&&(x&15)==rt{
+      if f(q,(x>>12)&15,(q+8).wrapping_add(v as usize)){return true}break
+     }
+     if (x>>12)&15==rt{break}
+    }
+   }
+  }
+  p+=4;
+ }
+ false
+}
+/// Whether an ARM instruction overwrites core register `r` (loads and data
+/// processing; compares and stores do not).
+fn writes(x:u32,r:u32)->bool{
+ if x>>28!=0xe||(x>>12)&15!=r{return false}
+ match (x>>26)&3{
+  0=>!(8..=11).contains(&((x>>21)&15)),
+  1=>x&(1<<20)!=0,
+  _=>false,
+ }
+}
+#[derive(Clone,Copy,PartialEq,Debug)]
+pub struct Renderer{pub at:usize,pub view:Option<usize>,pub constants:bool}
+/// `image` is KatSmithy's loaded image (text then rodata), `text` its code size.
+pub fn renderer(image:&[u8],text:usize)->Option<Renderer>{
+ let s=find_bytes(image,RENDERER_LOG)?;
+ let start=image[..s].iter().rposition(|b|*b==0).map_or(0,|i|i+1);
+ let mut at=None;pic_loads(image,0,text,|q,_,target|{if target==start{at=Some(q);true}else{false}});
+ let at=at?;let (lo,hi)=(at.saturating_sub(RENDERER_BEFORE),(at+RENDERER_AFTER).min(text));
+ // The transform: a PC-relative global read as floats at +4 (origin x) and +0xC (scale).
+ let mut view=None;
+ pic_loads(image,lo,hi,|q,rd,target|{
+  let mut has=[false;2];
+  for i in 1..=8{let x=word_at(image,q+4*i).unwrap_or(0);
+   if x>>28==0xe&&(x&0x0fb0_0f00)==0x0d90_0a00&&(x>>16)&15==rd{if x&0xff==1{has[0]=true}if x&0xff==3{has[1]=true}}
+   if writes(x,rd){break}}
+  if has[0]&&has[1]{view=Some(target);true}else{false}
+ });
+ // Literal floats loaded by `vldr sN,[pc,#imm]` in the renderer.
+ let mut found=[false;TREE_CONSTANTS.len()];
+ for p in (lo..hi).step_by(4){
+  let x=word_at(image,p).unwrap_or(0);
+  if x>>28!=0xe||(x&0x0f3f_0f00)!=0x0d1f_0a00{continue}
+  let imm=((x&0xff)*4) as usize;let lit=if x&(1<<23)!=0{p+8+imm}else{(p+8).wrapping_sub(imm)};
+  if let Some(v)=f32_at(image,lit){for (i,c) in TREE_CONSTANTS.iter().enumerate(){if (v-c).abs()<1e-4{found[i]=true}}}
+ }
+ Some(Renderer{at,view,constants:found.iter().all(|f|*f)})
+}
+
 // Weapon tree record (relative to its start): columns, first column and row of
 // each line (by line ID), displayed rows with their row position, height and line ID.
 pub const TREE_COLUMNS:usize=0x10;pub const TREE_LINE_COL:usize=0x14;pub const TREE_LINE_ROW:usize=0x154;
@@ -323,6 +394,25 @@ mod tests{
   w32(&mut m,at+ARMOR_ROW,4);m[at+ARMOR_TOP..at+ARMOR_TOP+4].copy_from_slice(&1.5f32.to_le_bytes());
   assert!(armor_at(&m,at).is_none());let s=armor_live(&m,at,ids).unwrap();assert_eq!((s.row,s.top),(4,1.5));
   w32(&mut m,at,0);assert!(armor_live(&m,at,ids).is_none());
+ }
+ #[test]fn renderer_gives_the_transform_global_and_checks_layout_constants(){
+  // Synthetic ARM: the log string's PC-relative load, a reused register (first a
+  // different global, then the transform read at +4/+0xC), and the literal pool.
+  let build=|consts:&[f32]|{
+   let mut m=vec![0u8;0x1000];let s=0x801;m[0x800]=0;m[s..s+RENDERER_LOG.len()].copy_from_slice(RENDERER_LOG);
+   let put=|m:&mut Vec<u8>,at:usize,v:u32|m[at..at+4].copy_from_slice(&v.to_le_bytes());
+   put(&mut m,0x100,0xe59f1010);put(&mut m,0x104,0xe08f1001);put(&mut m,0x118,(s-0x10c) as u32);
+   put(&mut m,0x120,0xe59f3020);put(&mut m,0x124,0xe08f3003);put(&mut m,0x148,0x3f0-0x12c);  // other global
+   put(&mut m,0x128,0xed937a00);                                                                // vldr s14,[r3]
+   put(&mut m,0x12c,0xe59f3018);put(&mut m,0x130,0xe08f3003);put(&mut m,0x14c,0x3e0-0x138);  // transform
+   put(&mut m,0x134,0xed937a01);put(&mut m,0x138,0xedd37a03);                                 // [r3,#4] [r3,#0xC]
+   for (i,c) in consts.iter().enumerate(){put(&mut m,0x180+4*i,0xed9f0a1e);put(&mut m,0x200+4*i,c.to_bits());}
+   m
+  };
+  let m=build(&TREE_CONSTANTS);
+  assert_eq!(renderer(&m,0x400),Some(Renderer{at:0x104,view:Some(0x3e0),constants:true}));
+  let m=build(&TREE_CONSTANTS[..6]);assert_eq!(renderer(&m,0x400).map(|r|r.constants),Some(false));
+  assert_eq!(renderer(&[0u8;64],32),None);
  }
  #[test]fn tree_record_is_found_by_content_anywhere(){
   for at in [0x40usize,0x1000]{

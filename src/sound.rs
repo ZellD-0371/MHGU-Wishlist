@@ -2,12 +2,15 @@
 use core::{ptr,sync::atomic::{AtomicBool,AtomicU32,Ordering}};
 use alloc::vec::Vec;
 static CAPTURE:AtomicBool=AtomicBool::new(false);
+#[cfg_attr(not(feature="debug-ui"),allow(dead_code))] // debug-ui builds
 static CAPTURED:[AtomicU32;32]=[const{AtomicU32::new(u32::MAX)};32];
 static PENDING:AtomicU32=AtomicU32::new(u32::MAX);
 pub use crate::sound_cues::Cue;
 pub fn cue(cue:Cue){PENDING.store(cue.id(),Ordering::Release);}
 pub fn capturing()->bool{CAPTURE.load(Ordering::Relaxed)}
+#[cfg_attr(not(feature="debug-ui"),allow(dead_code))] // debug-ui builds
 pub fn capture(on:bool){if on{for c in &CAPTURED{c.store(u32::MAX,Ordering::Relaxed)}}CAPTURE.store(on,Ordering::Release);}
+#[cfg_attr(not(feature="debug-ui"),allow(dead_code))] // debug-ui builds
 pub fn captured()->Vec<u32>{CAPTURED.iter().map(|c|c.load(Ordering::Relaxed)).filter(|c|*c!=u32::MAX).collect()}
 pub fn request_open(_id:u32){cue(Cue::Open);}
 #[cfg(feature="debug-ui")]

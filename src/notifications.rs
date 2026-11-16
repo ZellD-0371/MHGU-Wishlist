@@ -38,6 +38,7 @@ impl Queue{
 }
 pub struct Demo{pub queue:Queue,pub recipes:[Recipe;4],pub scenario:usize,pub elapsed:f32,second_launched:bool}
 impl Demo{
+ #[cfg_attr(not(feature="debug-ui"),allow(dead_code))] // debug-ui builds
  pub fn new(recipes:[Recipe;4],scenario:usize)->Self{let mut demo=Self{queue:Queue::default(),recipes,scenario:scenario.min(2),elapsed:0.,second_launched:false};demo.restart();demo}
  pub fn restart(&mut self){self.queue.clear();self.elapsed=0.;self.second_launched=false;
   let count=match self.scenario{0=>2,1=>1,_=>4};for recipe in self.recipes.iter().take(count){self.queue.push(*recipe);}

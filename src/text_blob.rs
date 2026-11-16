@@ -1,5 +1,6 @@
 //! Checked, sorted on-disk text index. No native addresses are stored in the file.
 fn word(data:&[u8],at:usize)->Option<u32>{Some(u32::from_le_bytes(data.get(at..at+4)?.try_into().ok()?))}
+#[cfg_attr(not(test),allow(dead_code))] // used by the host checks in tools/
 pub fn valid(data:&[u8])->bool{
  if data.get(..4)==Some(b"WLL1"){return single_language(data).is_some()}
  if data.get(..4)!=Some(b"WLTX")||word(data,4)!=Some(1){return false}

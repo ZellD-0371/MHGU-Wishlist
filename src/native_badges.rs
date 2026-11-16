@@ -111,6 +111,7 @@ fn grid_owner(base:u32)->Option<u32>{
  let children=unsafe{rd(parent+0x34)};if !valid(children){return None}let pane=unsafe{rd(children+8*4)};if !visible(pane,base){return None}
  Some(pane)
 }
+#[cfg_attr(not(test),allow(dead_code))] // used by the host checks in tools/
 pub fn markers(list:&List,base:u32)->Vec<Marker>{markers_with(list,base,true)}
 /// `hunter_list` false: another plugin draws over the hunter's production list
 /// (KatSmithy's armor list), whose own pins replace the game-list anchors.

@@ -5,7 +5,8 @@ mod diagnostics;mod inventory;mod sorting;mod atlas;mod text_cache;mod material_
 mod binding_model;mod bindings;
 mod hook_guard;mod button_prompts;mod menu_buttons;mod input_chain;mod native_modal;
 mod hud_layout;mod skill_view;mod katsmithy_model;mod katsmithy;
-mod model;mod generated;mod locales;mod native;mod controller;mod storage;mod ui;mod smithy;mod equipment;mod navigation;mod sound;mod icons;mod interaction;mod session;mod profiles;mod text_blob;mod text_data;mod presentation;mod game_menu;mod sound_cues;mod notifications;mod badge_model;mod native_badges;mod completed;
+mod model;#[allow(dead_code)] mod generated; // full extracted tables; only some are read
+mod locales;mod native;mod controller;mod storage;mod ui;mod smithy;mod equipment;mod navigation;mod sound;mod icons;mod interaction;mod session;mod profiles;mod text_blob;mod text_data;mod presentation;mod game_menu;mod sound_cues;mod notifications;mod badge_model;mod native_badges;mod completed;
 use core::{cell::UnsafeCell,sync::atomic::{AtomicBool,Ordering},ffi::c_void};
 use model::{List,Recipe};
 use forge::log::prelude::{info,error};

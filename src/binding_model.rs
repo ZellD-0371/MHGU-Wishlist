@@ -1,5 +1,6 @@
 //! Serializable bindings and edge detection, independent of platform input APIs.
 pub const COUNT:usize=2;
+#[cfg_attr(not(test),allow(dead_code))] // used by the host checks in tools/
 pub const EVENTS:[u32;COUNT]=[2,1];
 pub const DEFAULT_PAD:[u32;COUNT]=[48,32];
 pub const DEFAULT_KEYS:[u32;COUNT]=[53,62];
@@ -8,9 +9,12 @@ pub fn valid_key(v:u32)->bool{let k=v&255;v&!0x700ff==0&&((4..=101).contains(&k)
 pub fn matches(raw:u32,chord:u32)->bool{chord!=0&&raw&chord==chord}
 // Only the most specific matching chord fires (L3+R3 suppresses plain R3).
 pub fn active(raw:u32,chords:&[u32;COUNT])->u32{let mut out=0;for i in 0..COUNT{if matches(raw,chords[i])&&!chords.iter().any(|other|*other!=chords[i]&&*other&chords[i]==chords[i]&&matches(raw,*other)){out|=1<<i;}}out}
+#[cfg_attr(not(test),allow(dead_code))] // used by the host checks in tools/
 #[derive(Clone,Copy,Default)]
 pub struct Edges{held:u32}
+#[cfg_attr(not(test),allow(dead_code))] // used by the host checks in tools/
 impl Edges{pub const fn new()->Self{Self{held:0}}pub fn step(&mut self,current:u32)->u32{let e=current&!self.held;self.held=current;e}pub fn block(&mut self){self.held=u32::MAX;}}
+#[cfg_attr(not(test),allow(dead_code))] // used by the host checks in tools/
 pub fn events(bits:u32)->u32{EVENTS.iter().enumerate().filter(|(i,_)|bits&(1<<i)!=0).fold(0,|a,(_,v)|a|*v)}
 #[derive(Clone,Copy,Default)]
 pub struct KeyboardGuard{waiting:bool}
