@@ -14,6 +14,7 @@ static INTERNAL_HELD:AtomicU32=AtomicU32::new(0);
 static RELEASE:AtomicU32=AtomicU32::new(0);
 static mut NATIVE_MODAL:crate::native_modal::Gate=crate::native_modal::Gate::new();
 static SHOULDER_HELD:AtomicU32=AtomicU32::new(0);
+static NAV_RELEASE:AtomicU32=AtomicU32::new(0);
 unsafe fn filter(index:usize,state:u32,id:u32){
  let address=ORIGINAL[index].load(Ordering::Acquire);let call:unsafe extern "C" fn(u32,u32)=unsafe{core::mem::transmute(address)};unsafe{call(state,id)};
  if state<0x10000||unsafe{rd(state+32)}&1==0{return}
@@ -56,12 +57,24 @@ unsafe fn filter(index:usize,state:u32,id:u32){
   }}
  }
 }
+fn owns_input(overlay:bool,capture:bool)->bool{!overlay&&STATE.with(|s|s.mode!=0||capture||s.events&(PAD_REGISTER|PAD_LIST)!=0)}
+/// The wishlist owns input while open, capturing a binding or about to open.
+pub fn publish_ownership(){
+ crate::katsmithy::set_owned(owns_input(forge::graphics::Graphics::is_menu_visible(),crate::bindings::capturing()));
+}
 // Observe final menu actions after the host's optional action remapping.
 #[forge::hook(offset=0x3de4f8)]
 fn menu_translate(object:u32,word:u32)->u32{
- let mapped=original!(object,word);let overlay=forge::graphics::Graphics::is_menu_visible();
+ let overlay=forge::graphics::Graphics::is_menu_visible();
  let capture=crate::bindings::capturing();
  let recomp=crate::button_prompts::is_recomp();
+ // Decide ownership before calling inward: hooks below us act on what they receive.
+ let owned=owns_input(overlay,capture);crate::katsmithy::set_owned(owned);
+ let mut latch=NAV_RELEASE.load(Ordering::Acquire);
+ let inner=crate::input_chain::inner_word(word,owned,&mut latch);
+ NAV_RELEASE.store(latch,Ordering::Release);
+ let mapped=original!(object,inner);
+ let mapped=if owned{crate::input_chain::owned_actions(mapped,word,crate::katsmithy::input_wrapped())}else{mapped};
  let shoulder_word=mapped;
  let shoulder_pressed=shoulder_word&!SHOULDER_HELD.swap(shoulder_word,Ordering::AcqRel);
  STATE.with(|s|{

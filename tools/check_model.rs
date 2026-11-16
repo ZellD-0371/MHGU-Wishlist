@@ -618,3 +618,25 @@ fn stock_decoder_reports_unrelated_invalid_slot_and_recovers() {
 #[path="../src/input_chain.rs"]mod input_chain;
 
 #[path="../src/native_modal.rs"]mod native_modal;
+
+#[path="../src/katsmithy_model.rs"]mod katsmithy_model;
+
+#[test]fn partial_material_gain_notifies_until_the_set_is_gathered(){
+ let r=notification_recipes()[0];let m=r.totals()[0];
+ let mut list=model::List::default();list.insert(0,r).unwrap();list.slots[0].as_mut().unwrap().ready=Some(false);
+ let mut old=[0u32;4096];let mut new=[0u32;4096];old[m.id as usize]=m.count.saturating_sub(2);new[m.id as usize]=m.count.saturating_sub(1);
+ if m.count>=2{assert_eq!(list.progress(&old,&new),vec![(0,m.id,m.count-1,m.count)]);}
+ // A full count is the gathered notice, not progress; no gain is no notice.
+ new[m.id as usize]=m.count;assert!(list.progress(&old,&new).is_empty());
+ assert!(list.progress(&old,&old).is_empty());
+ list.slots[0].as_mut().unwrap().ready=None;new[m.id as usize]=m.count.saturating_sub(1);assert!(list.progress(&old,&new).is_empty());
+}
+#[test]fn progress_notice_refreshes_and_yields_to_gathered_notice(){
+ let r=notification_recipes()[0];let mut q=notifications::Queue::default();
+ let p=|have|notifications::Progress{material:1,have,need:5};
+ q.push_progress(r,p(3));q.push_progress(r,p(4));assert_eq!(q.visible_count(),1);
+ assert_eq!(q.visible().next().unwrap().1.progress,Some(p(4)));
+ q.push_progress(r,p(5));assert_eq!(q.visible().next().unwrap().1.progress,Some(p(4)));
+ q.push(r);assert_eq!(q.visible_count(),1);assert_eq!(q.visible().next().unwrap().1.progress,None);
+ q.push_progress(r,p(4));assert_eq!(q.visible().next().unwrap().1.progress,None);
+}

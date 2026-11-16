@@ -19,10 +19,19 @@ unsafe fn half(p:u32)->u16{unsafe{core::ptr::read_unaligned(p as *const u16)}}
 unsafe fn byte(p:u32)->u8{unsafe{core::ptr::read(p as *const u8)}}
 unsafe fn float(p:u32)->f32{f32::from_bits(unsafe{rd(p)})}
 pub fn observe_hunter(owner:u32){HUNTER.store(owner,Ordering::Release);}
-// Track the parent from its unconditional virtual updater, before entering a recipe.
-// +6F8E48 refreshes recipe data and is not reached on the first equipment-box visit.
-#[forge::hook(offset=0x6f1ae8)]
-fn hunter_update(owner:u32)->u32{let result=original!(owner);if valid(owner){observe_hunter(owner);}result}
+// The facility-window factory (+55E4F8) stores its one open window in the global
+// menu manager at +15C and creates no other window until that slot is released.
+// Reading it finds the hunter smithy on its first equipment-box visit without a
+// detour on its updater (+6F1AE8), whose entry KatSmithy guards and hooks itself.
+const MENU_MANAGER:u32=0x1899458;
+const MENU_MANAGER_GOT:u32=0x1838bd8;
+const OPEN_WINDOW:u32=0x15c;
+const HUNTER_WINDOW_KIND:u8=3;
+pub(crate) fn open_hunter(base:u32)->Option<u32>{
+ let manager=unsafe{rd(base+MENU_MANAGER)};if !valid(manager){return None}
+ let window=unsafe{rd(manager+OPEN_WINDOW)};
+ (valid(window)&&unsafe{rd(window)}==base+HUNTER_VTABLE&&unsafe{byte(window+0x38)}==HUNTER_WINDOW_KIND).then_some(window)
+}
 pub fn clear(){for a in &LISTS{a.store(0,Ordering::Release);}HUNTER.store(0,Ordering::Release);CACHE.with(|c|{c.0.fill(EMPTY);c.1=0;});}
 fn list_parent(owner:u32,base:u32)->Option<(u32,bool)>{
  if !valid(owner)||unsafe{rd(owner)}!=base+LIST_VTABLE{return None}
@@ -54,14 +63,22 @@ fn grid_icon(owner:u32,group:u32,object:u32,equip:u32,a4:u32,a5:u32)->u32{
 fn destroy_ui(owner:u32)->u32{let _=HUNTER.compare_exchange(owner,0,Ordering::AcqRel,Ordering::Relaxed);for p in &LISTS{let _=p.compare_exchange(owner,0,Ordering::AcqRel,Ordering::Relaxed);}CACHE.with(|cache|{for b in &mut cache.0{if b.owner==owner{*b=EMPTY;}}});original!(owner)}
 pub fn install(base:u32)->bool{
  if unsafe{rd(base+HUNTER_VTABLE+0x24)}!=base+0x6f1ae8{return false}
+ // Read-only checks of the open-window slot: the factory's load/store of +15C,
+ // the slot getter, the hunter window kind and the relocated manager GOT entry.
+ // These words lie past the factory entry, so another mod's hook there is fine.
+ for (offset,expected) in [(0x55e50c,0xe594515c),(0x55e80c,0xe584515c),(0x55e840,0xe590015c),(0x55e848,0x15d00038),(0x6f0044,0xe3a02003),(0x70e7d0,0xe5c04038)]{
+  let word=unsafe{rd(base+offset)};
+  if word!=expected{forge::log::prelude::error!("[wishlist] open-window signature +{:X} rejected ({:08X})",offset,word);return false}
+ }
+ if unsafe{rd(base+MENU_MANAGER_GOT)}!=base+MENU_MANAGER{forge::log::prelude::error!("[wishlist] menu manager relocation rejected");return false}
  // Better_Skillinfo also hooks the shared destructor. Forge chains original!()
  // through its previous detour; validate the intact tail rather than disabling
  // all badges solely because that entry already contains Forge's jump.
- for (offset,expected) in [(0x56da30,[0xe92d4010,0xe1a04000,0xe59f0084,0xe79f0000]),(0x6f1ae8,[0xe92d41f0,0xe24dd018,0xe1a04000,0xeb007361]),(0x58b908,[0xe92d4ff0,0xe24dd014,0xe3a01000,0xe3a02001]),(0x56ea38,[0xe92d4bf0,0xe24dd010,0xe1a09002,0xe1a05001])]{
+ for (offset,expected) in [(0x56da30,[0xe92d4010,0xe1a04000,0xe59f0084,0xe79f0000]),(0x58b908,[0xe92d4ff0,0xe24dd014,0xe3a01000,0xe3a02001]),(0x56ea38,[0xe92d4bf0,0xe24dd010,0xe1a09002,0xe1a05001])]{
   let site=base+offset;let words=core::array::from_fn(|i|unsafe{rd(site+i as u32*4)});
   if !crate::hook_guard::matches(words,expected,site){forge::log::prelude::error!("[wishlist] badge entry +{:X} rejected ({:08X})",offset,words[0]);return false}
  }
- forge::install_hook!(base,destroy_ui);forge::install_hook!(base,hunter_update);forge::install_hook!(base,list_update);forge::install_hook!(base,grid_icon);true
+ forge::install_hook!(base,destroy_ui);forge::install_hook!(base,list_update);forge::install_hook!(base,grid_icon);true
 }
 fn object(layout:u32,group:u32,index:u32)->Option<u32>{
  if !valid(layout)||group>512||index>200{return None}
@@ -90,13 +107,16 @@ fn hunter_registered(list:&List,parent:u32,row:u32)->bool{
  })
 }
 fn grid_owner(base:u32)->Option<u32>{
- let parent=HUNTER.load(Ordering::Acquire);if !valid(parent)||unsafe{rd(parent)}!=base+HUNTER_VTABLE||unsafe{rd(parent+4)}&255!=7{return None}
+ let parent=open_hunter(base).unwrap_or_else(||HUNTER.load(Ordering::Acquire));if !valid(parent)||unsafe{rd(parent)}!=base+HUNTER_VTABLE||unsafe{rd(parent+4)}&255!=7{return None}
  let children=unsafe{rd(parent+0x34)};if !valid(children){return None}let pane=unsafe{rd(children+8*4)};if !visible(pane,base){return None}
  Some(pane)
 }
-pub fn markers(list:&List,base:u32)->Vec<Marker>{
+pub fn markers(list:&List,base:u32)->Vec<Marker>{markers_with(list,base,true)}
+/// `hunter_list` false: another plugin draws over the hunter's production list
+/// (KatSmithy's armor list), whose own pins replace the game-list anchors.
+pub fn markers_with(list:&List,base:u32,hunter_list:bool)->Vec<Marker>{
  let mut out=Vec::new();
- for cached in &LISTS{let owner=cached.load(Ordering::Acquire);let Some((parent,palico))=list_parent(owner,base) else{continue};if !palico{HUNTER.store(parent,Ordering::Release);}if !visible(owner,base){continue}
+ for cached in &LISTS{let owner=cached.load(Ordering::Acquire);let Some((parent,palico))=list_parent(owner,base) else{continue};if !palico{HUNTER.store(parent,Ordering::Release);}if !visible(owner,base)||!palico&&!hunter_list{continue}
   let layout=unsafe{rd(owner+0x24)};let setup=unsafe{rd(owner+0x50)};
   for row in 0..8{if unsafe{byte(setup+0x16+row*24)}==0{continue}
    let registered=if palico{let kind=unsafe{half(parent+0x10d2+row*24)} as u8;let id=unsafe{half(parent+0x10d4+row*24)};list.slots.iter().flatten().any(|e|e.recipe.kind==kind&&e.recipe.id==id&&e.recipe.level==0)}else{hunter_registered(list,parent,row)};

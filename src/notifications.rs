@@ -5,10 +5,23 @@ use crate::{model::Recipe,presentation::NOTICE_DURATION};
 pub const VISIBLE_LIMIT:usize=2;
 pub const TOP:f32=390.;pub const HEIGHT:f32=80.;pub const GAP:f32=8.;
 pub fn top(slot:usize)->f32{TOP+slot.min(VISIBLE_LIMIT-1) as f32*(HEIGHT+GAP)}
-#[derive(Clone,Copy)]pub struct Notice{pub recipe:Recipe,pub seconds:f32}
+/// One material moved closer to its requirement without completing the recipe.
+#[derive(Clone,Copy,PartialEq,Debug)]pub struct Progress{pub material:u16,pub have:u32,pub need:u32}
+#[derive(Clone,Copy)]pub struct Notice{pub recipe:Recipe,pub seconds:f32,pub progress:Option<Progress>}
 #[derive(Default)]pub struct Queue{entries:Vec<Notice>}
 impl Queue{
- pub fn push(&mut self,recipe:Recipe){if !self.entries.iter().any(|n|n.recipe==recipe){self.entries.push(Notice{recipe,seconds:NOTICE_DURATION});}}
+ /// All materials gathered. Replaces a pending progress notice for the recipe.
+ pub fn push(&mut self,recipe:Recipe){
+  if let Some(n)=self.entries.iter_mut().find(|n|n.recipe==recipe){if n.progress.is_some(){n.progress=None;n.seconds=NOTICE_DURATION;}return}
+  self.entries.push(Notice{recipe,seconds:NOTICE_DURATION,progress:None});
+ }
+ /// A material increased but is still short (a full count uses the gathered notice).
+ /// One notice per recipe: a newer count refreshes it; a gathered notice is kept.
+ pub fn push_progress(&mut self,recipe:Recipe,progress:Progress){
+  if progress.have>=progress.need{return}
+  if let Some(n)=self.entries.iter_mut().find(|n|n.recipe==recipe){if n.progress.is_some(){n.progress=Some(progress);n.seconds=NOTICE_DURATION;}return}
+  self.entries.push(Notice{recipe,seconds:NOTICE_DURATION,progress:Some(progress)});
+ }
  pub fn retain_registered(&mut self,list:&crate::model::List){self.entries.retain(|n|list.registered(n.recipe).is_some());}
  pub fn clear(&mut self){self.entries.clear();}
  pub fn is_empty(&self)->bool{self.entries.is_empty()}

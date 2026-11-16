@@ -26,7 +26,7 @@ canvas=source[source.index('pub(crate) static mut FONT'):source.index('fn save('
 draw=source[source.index('fn materials('):source.index('pub fn render()')]
 render=source[source.index('pub fn render()'):source.index('pub fn menu()')]
 render='pub fn render(){let cv=Canvas::new().unwrap();STATE.with(|s|{'+render.split(' STATE.with(|s|{',1)[1]
-modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['button_prompts','sorting','binding_model','text_cache','material_cache','model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications'])
+modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['button_prompts','sorting','binding_model','text_cache','material_cache','model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications','katsmithy_model'])
 stub=r'''
 
 extern crate alloc;extern crate self as forge;
@@ -75,7 +75,9 @@ mod icons{
  pub fn equipment(k:u8)->usize{*EQUIP.get(k as usize).unwrap_or(&46)}pub fn material(id:u16)->(usize,u32){let r=ITEMS[id as usize];(r.0 as usize,PALETTE[r.1 as usize])}
 }
 mod text_data{pub fn init(){}pub fn description(k:u8,id:u16,l:usize)->&'static str{super::text_blob::get(include_bytes!(concat!(env!("WISHLIST_SRC"),"/../assets/ui-text.bin")),k,id,l)}}
-mod native_badges{pub struct Marker{pub x:f32,pub y:f32}pub fn available()->bool{false}pub fn markers(_: &super::List,_:u32)->Vec<Marker>{vec![]}}
+mod native_badges{pub struct Marker{pub x:f32,pub y:f32}pub fn available()->bool{false}pub fn markers(_: &super::List,_:u32)->Vec<Marker>{vec![]}pub fn markers_with(_: &super::List,_:u32,_:bool)->Vec<Marker>{vec![]}}
+mod katsmithy{#[derive(Clone,Copy)]pub struct ArmorView;#[derive(Clone,Copy)]pub struct WeaponView;pub fn armor_view(_:u32)->Option<ArmorView>{None}pub fn weapon_view(_:u32)->Option<WeaponView>{None}pub fn tree_dialog(_:u32)->bool{false}pub fn armor_pins(_:ArmorView,_:&super::List)->Vec<(f32,f32)>{vec![]}pub fn weapon_pins(_:WeaponView,_:&super::List)->Vec<(f32,f32)>{vec![]}}
+mod skill_view{pub fn show(_:u8,_:u16,_:u8,_:f32,_:f32,_:f32){}pub fn open(){}pub fn hide(){}pub fn overlay(){}pub fn begin_frame(){}}
 mod game_menu{pub fn visible(_:u32)->bool{false}}
 mod sound{pub enum Cue{Open}pub fn cue(_:Cue){}}use sound::Cue;
 struct State{sort:Option<sorting::Dialog>,installed:bool,loaded:bool,game_ready:bool,base:u32,mode:u8,list:List,stock:[u32;4096],stock_ready:bool,material_cache:material_cache::Cache,aggregate:interaction::AggregateFocus,selected:usize,focus:interaction::Focus,preview:bool,preview_panel:usize,preview_clock:f32,frozen:Option<Recipe>,detail_page:usize,tab:usize,status:u8,notices:notifications::Queue,notice_demo:Option<notifications::Demo>,notice_test_case:usize}
@@ -90,7 +92,7 @@ fn main(){
  let mut stock=[99;4096];stock[r.materials[0].id as usize]=0;
  let frozen=g::RECIPES.iter().find(|r|r.kind==7).copied();
  let mut s=State{sort:None,installed:true,loaded:true,game_ready:true,base:0,mode:2,list,stock,stock_ready:true,material_cache:Default::default(),aggregate:Default::default(),selected:0,focus:Default::default(),preview:false,preview_panel:0,preview_clock:0.,frozen,detail_page:0,tab:0,status:0,notices:notifications::Queue::default(),notice_demo:None,notice_test_case:2};
- match screen{"sort-primary"=>s.sort=Some(sorting::Dialog::default()),"sort-secondary"=>s.sort=Some(sorting::Dialog{secondary:true,criterion:1,..Default::default()}),"sort-wait"=>s.sort=Some(sorting::Dialog{secondary:true,criterion:1,message:1,..Default::default()}),"register"=>{s.mode=1;s.selected=7},"register-filled"=>s.mode=1,"materials"=>s.tab=1,"inspect"=>s.focus.material=true,"skills"=>s.detail_page=1,"confirm"=>s.mode=4,"done"=>s.mode=5,"overwrite"=>s.mode=3,"quick-remove"=>s.mode=8,"notice"=>{s.mode=0;s.notices.push(r);},"notice-test"=>start_notice_demo(&mut s),"weapon"=>s.selected=2,"category"=>{if let Some(r)=g::RECIPES.iter().find(|r|r.group>0){s.list.slots[0]=Some(model::Entry{recipe:*r,ready:None})}},_=>()}
+ match screen{"sort-primary"=>s.sort=Some(sorting::Dialog::default()),"sort-secondary"=>s.sort=Some(sorting::Dialog{secondary:true,criterion:1,..Default::default()}),"sort-wait"=>s.sort=Some(sorting::Dialog{secondary:true,criterion:1,message:1,..Default::default()}),"register"=>{s.mode=1;s.selected=7},"register-filled"=>s.mode=1,"materials"=>s.tab=1,"inspect"=>s.focus.material=true,"skills"=>s.detail_page=1,"confirm"=>s.mode=4,"done"=>s.mode=5,"overwrite"=>s.mode=3,"quick-remove"=>s.mode=8,"notice"=>{s.mode=0;s.notices.push(r);},"notice-progress"=>{s.mode=0;let w=g::RECIPES.iter().find(|r|r.kind==7&&r.id==11&&r.level==0).copied().unwrap_or(r);let m=w.totals()[0];s.notices.push_progress(w,notifications::Progress{material:m.id,have:m.count.saturating_sub(1).max(1),need:m.count.max(2)});s.notices.push(r);},"notice-test"=>start_notice_demo(&mut s),"weapon"=>s.selected=2,"category"=>{if let Some(r)=g::RECIPES.iter().find(|r|r.group>0){s.list.slots[0]=Some(model::Entry{recipe:*r,ready:None})}},_=>()}
  if screen=="materials-long"{let r=*g::RECIPES.iter().find(|r|r.kind==9&&r.id==51&&r.materials.iter().any(|m|g::ITEMDATA.get(m.id as usize*2).is_some_and(|v|v[0]=="Gore Magala Feeler+"))).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});s.stock.fill(0);s.tab=1;}
  if screen=="braces"{let r=*g::RECIPES.iter().find(|r|r.kind==3&&r.id==3&&r.level==0).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
  if screen=="long-equipment"{let r=*g::RECIPES.iter().max_by(|a,b|imgui::calc_text_size(&name(**a,lang),false,0.).x.total_cmp(&imgui::calc_text_size(&name(**b,lang),false,0.).x)).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
@@ -144,7 +146,7 @@ def paint(commands,width=1280,height=720):
    x,y,x2,y2=clips[-1];mask=Image.new('L',im.size);ImageDraw.Draw(mask).rectangle((x,y,x2,y2),fill=255);layer.putalpha(ImageChops.multiply(layer.getchannel('A'),mask))
   im.alpha_composite(layer)
  return im.convert('RGB')
-screens=['register','register-filled','list','braces','materials','materials-long','prompts','inspect','skills','confirm','done','overwrite','notice','notice-test','weapon','category','quick-remove','sort-primary','sort-secondary','sort-wait']
+screens=['register','register-filled','list','braces','materials','materials-long','prompts','inspect','skills','confirm','done','overwrite','notice','notice-progress','notice-test','weapon','category','quick-remove','sort-primary','sort-secondary','sort-wait']
 for screen in screens:
  raw=subprocess.check_output([str(OUT/'capture.exe'),screen,'4'],text=True,encoding='utf-8');commands=[json.loads(s) for s in raw.splitlines()]
  (OUT/(screen+'.json')).write_text(json.dumps(commands,ensure_ascii=False),encoding='utf-8');paint(commands).save(OUT/(screen+'.png'))
@@ -221,10 +223,11 @@ for lang in range(9):
       if text==labels[key][lang]:assert abs(ink_x-expected_x)<.6,(lang,screen,key);modal_checks+=1
     if screen=='notice' and text==labels['NOTICE'][lang]:
      toast=next(a for typ,*a in commands if typ=='rect' and abs(a[3]-a[1]-80)<.1 and a[4]==0xe0282620)
-     assert abs(ink_x-(toast[0]+toast[2])*.5)<.6,(lang,'notification centre')
+     badge=0
+     assert abs(ink_x-(toast[0]+badge+toast[2])*.5)<.6,(lang,'notification centre')
      title=next(a for typ,*a in commands if typ=='text' and a[4].startswith(labels['TITLE'][lang]+' \"'))
      title_width=sum(adv[ord(ch)] for ch in title[4])*title[2]
-     expected=min(max(title_width+40,width),876)+32
+     expected=min(max(title_width+40,width),876)+32+badge
      assert abs(toast[2]-toast[0]-expected)<1,(lang,'excess notification padding')
      notice_checks+=1
     if re.fullmatch(r'◀ \d+ / \d+ ▶',text):

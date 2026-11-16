@@ -64,6 +64,14 @@ impl List{
    if e.ready==Some(false)&&ready{events.push(i)}e.ready=Some(ready);
   }}events
  }
+ /// Materials that increased between two inventory reads but are still short,
+ /// for recipes known not to be ready: (slot, material, have, need), one per slot.
+ pub fn progress(&self,old:&[u32;4096],new:&[u32;4096])->Vec<(usize,u16,u32,u32)>{
+  let mut out=Vec::new();
+  for (i,e) in self.slots.iter().enumerate(){let Some(e)=e else{continue};if e.ready!=Some(false){continue}
+   if let Some(m)=e.recipe.totals().into_iter().find(|m|{let (o,n)=(old[m.id as usize],new[m.id as usize]);n>o&&n<m.count}){out.push((i,m.id,new[m.id as usize],m.count));}
+  }out
+ }
  pub fn totals(&self)->Vec<Material>{let mut out:Vec<Material>=Vec::new();for e in self.slots.iter().flatten(){for m in e.recipe.totals(){if let Some(v)=out.iter_mut().find(|v|v.id==m.id){v.count+=m.count}else{out.push(m)}}}out.sort_by_key(|m|m.id);out}
  pub fn ordered_totals(&self,stock:&[u32;4096],known:bool)->Vec<Material>{let mut out=self.totals();if known{out.sort_by_key(|m|(stock[m.id as usize]>=m.count,m.id));}out}
  pub fn remove_completed(&mut self,kind:u8,id:u16,level:u8)->bool{let mut changed=false;for i in 0..CAPACITY{if self.slots[i].is_some_and(|e|e.recipe.kind==kind&&e.recipe.id==id&&e.recipe.level==level){self.slots[i]=None;self.costs[i]=0;self.registration[i]=0;changed=true;}}if changed{self.normalize_registration();}changed}

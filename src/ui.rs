@@ -350,9 +350,11 @@ fn aggregate(cv:&Canvas,s:&State)->Option<Recipe>{
  (0..48).find(|slot|related&(1u64<<slot)!=0).and_then(|slot|s.list.slots[slot]).map(|e|e.recipe)
 
 }
-fn draw_notice(cv:&Canvas,r:Recipe,lang:usize,elapsed:f32,slot:usize){
- let title=format!("{} \"{}\"",l::TITLE[lang],name(r,lang));let body=l::NOTICE[lang];
- let title_size=(23.*842./cv.measure(23.,&title).max(842.)).max(14.);let body_size=25.;let title_w=cv.measure(title_size,&title);let body_w=cv.measure(body_size,body);
+fn draw_notice(cv:&Canvas,r:Recipe,progress:Option<crate::notifications::Progress>,lang:usize,elapsed:f32,slot:usize){
+ let title=format!("{} \"{}\"",l::TITLE[lang],name(r,lang));
+ // A partial gain names the material and its count; a full set keeps the gathered text.
+ let progress_text=progress.map(|p|format!("{} ( {} / {} )",item(p.material,lang),p.have,p.need));let body=progress_text.as_deref().unwrap_or(l::NOTICE[lang]);
+ let title_size=(21.*842./cv.measure(21.,&title).max(842.)).max(14.);let body_size=23.;let title_w=cv.measure(title_size,&title);let body_w=cv.measure(body_size,body);
  let w=(title_w+40.).max(body_w).min(876.)+32.;
  let right=(imgui::get_io().DisplaySize.x-cv.ox)/cv.scale-18.;let opacity=crate::presentation::notice_opacity(elapsed);let x=right-w;
  // Quest maps occupy the upper-right until ~350; keep the whole toast below them.
@@ -377,7 +379,7 @@ fn draw_notice_demo(cv:&Canvas,s:&mut State){
  cv.text(146.,306.,574.,24.,WHITE,&format!("{}: {}    {}: {}",l::VISIBLE[lang],demo.queue.visible_count(),l::QUEUED[lang],demo.queue.waiting_count()));
  if demo.queue.is_empty(){cv.fit(146.,343.,574.,22.,GREEN,l::TEST_FINISHED[lang]);}
  cv.bar(755.,642.,160.,crate::icons::A,l::REPLAY[lang]);cv.bar(755.,676.,160.,crate::icons::B,l::BACK[lang]);
- for (slot,n) in demo.queue.visible(){draw_notice(cv,n.recipe,lang,crate::presentation::NOTICE_DURATION-n.seconds,slot);}
+ for (slot,n) in demo.queue.visible(){draw_notice(cv,n.recipe,n.progress,lang,crate::presentation::NOTICE_DURATION-n.seconds,slot);}
  demo.advance(imgui::get_io().DeltaTime);
 }
 fn selected_recipe(s:&State)->Option<Recipe>{
@@ -393,6 +395,8 @@ fn details(cv:&Canvas,s:&State,r:Option<Recipe>){
  cv.rect(984.,169.,266.,45.,INSET);cv.rect(984.,169.,3.,45.,GOLD);cv.icon_plate(995.,176.,31.);cv.gear(r,997.,178.,27.);cv.box_text(1036.,169.,205.,45.,BODY,GOLD,&name(r,lang),false);
  cv.rect(984.,224.,266.,382.,INSET);
  if s.detail_page==1{
+  // Better Skillinfo draws its panel left of this frame, inside the list window.
+  let (edge,foot)=(cv.p(964.,69.),cv.p(964.,620.));crate::skill_view::show(r.kind,r.id,r.level,edge.x,edge.y,foot.y);
   let description=if r.kind==25{crate::name_data::material_description(r.id,lang)}else{crate::text_data::description(r.kind,r.id,lang)};
   cv.paragraph(995.,231.,244.,177.,BODY,WHITE,&description);cv.line(995.,417.,1239.,417.,RULE);
   cv.section(995.,426.,244.,l::SKILLS[lang]);
@@ -419,6 +423,17 @@ fn details(cv:&Canvas,s:&State,r:Option<Recipe>){
  }
 }
 fn action_a(cv:&Canvas,lang:usize){let x=501.;let w=426.;cv.box_text(x,319.,w,35.,29.,WHITE,l::REGISTER_ACTION[lang],true);cv.icon(crate::icons::A,x+(w-34.)*0.5,362.,34.,WHITE);}
+/// Registered-equipment pins on the game's lists, or on KatSmithy's armor list
+/// when it replaces the hunter's production list.
+fn draw_pins(native_cv:&Canvas,s:&crate::State){
+ let armor=crate::katsmithy::armor_view(s.base);let tree=crate::katsmithy::weapon_view(s.base);
+ for marker in crate::native_badges::markers_with(&s.list,s.base,armor.is_none()&&tree.is_none()){native_cv.pin(marker.x,marker.y);}
+ // KatSmithy's lists use its own centered 1280x720 transform, not the game HUD's.
+ let io=imgui::get_io();let Some((ox,oy,scale))=crate::katsmithy_model::transform(io.DisplaySize.x,io.DisplaySize.y) else{return};
+ let kat=Canvas{scale,ox,oy,draw:native_cv.draw};
+ if let Some(view)=armor{for (x,y) in crate::katsmithy::armor_pins(view,&s.list){kat.pin(x,y);}}
+ if let Some(view)=tree{for (x,y) in crate::katsmithy::weapon_pins(view,&s.list){kat.pin(x,y);}}
+}
 fn confirmation(cv:&Canvas,s:&State){let lang=s.list.language;cv.draw.add_rect_filled(ImVec2{x:0.,y:0.},imgui::get_io().DisplaySize,0x90000000,0.);cv.frame(400.,307.,480.,176.);
    let text=if s.mode==5{l::DONE[lang]}else if s.mode==3{l::REPLACE_QUESTION[lang]}else{l::DELETE_QUESTION[lang]};
    for (i,line) in text.lines().enumerate(){cv.center(418.,327.+i as f32*32.,444.,26.,WHITE,line);}
@@ -446,6 +461,7 @@ fn sort_dialog(cv:&Canvas,s:&State){
  if d.message>0{cv.paragraph(x+18.,535.,w-36.,45.,21.,RED,if d.message==1{l::SORT_WAIT[lang]}else{l::SAVE_FAILED[lang]});}
 }
 pub fn render(){
+ crate::skill_view::begin_frame();
  crate::button_prompts::refresh(imgui::get_io().DeltaTime);
  let menu=forge::graphics::Graphics::is_menu_visible();let capturing=crate::bindings::capturing();
  let pad_allowed=crate::bindings::pad_shortcuts_allowed();
@@ -461,18 +477,22 @@ pub fn render(){
  STATE.with(|s|{
   if !s.installed||!s.loaded||!s.game_ready{return}crate::icons::set_layout(s.list.layout);let lang=s.list.language;
   if s.mode==0{
-   if let Some(view)=crate::hud_layout::right_top(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,crate::hud_layout::current(s.base)){let native_cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw};for marker in crate::native_badges::markers(&s.list,s.base){native_cv.pin(marker.x,marker.y);}
-   if s.at_smithy()||crate::game_menu::visible(s.base){let y=if crate::game_menu::visible(s.base){398.}else{496.};native_cv.shortcut_bar(1102.,y,s.list.pad_bindings[0],l::TITLE[lang]);}if let Some(r)=s.active(){let registered=s.list.registered(r).is_some();native_cv.shortcut_bar(1102.,528.,s.list.pad_bindings[1],if registered{l::QUICK_REMOVE[lang]}else{l::REGISTER[lang]});}}
+   // KatSmithy's material dialog covers the smithy: no pins or bars over it.
+   if !crate::katsmithy::tree_dialog(s.base)&&let Some(view)=crate::hud_layout::right_top(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,crate::hud_layout::current(s.base)){let native_cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw};draw_pins(&native_cv,s);
+   // KatSmithy's weapon detail panel ends lower; lift both bars clear of its status box there.
+   let lift=if crate::katsmithy::weapon_view(s.base).is_some(){36.}else{0.};
+   if s.at_smithy()||crate::game_menu::visible(s.base){let y=if crate::game_menu::visible(s.base){398.}else{496.-lift};native_cv.shortcut_bar(1102.,y,s.list.pad_bindings[0],l::TITLE[lang]);}if let Some(r)=s.active(){let registered=s.list.registered(r).is_some();native_cv.shortcut_bar(1102.,528.-lift,s.list.pad_bindings[1],if registered{l::QUICK_REMOVE[lang]}else{l::REGISTER[lang]});}}
 
 
-   for (slot,n) in s.notices.visible(){draw_notice(&cv,n.recipe,lang,crate::presentation::NOTICE_DURATION-n.seconds,slot);}
+   for (slot,n) in s.notices.visible(){draw_notice(&cv,n.recipe,n.progress,lang,crate::presentation::NOTICE_DURATION-n.seconds,slot);}
    s.notices.advance(imgui::get_io().DeltaTime);return
   }
   s.material_cache.refresh(&s.list,&s.stock,s.stock_ready,g::PROVISIONS);
-  if s.mode==8{confirmation(&cv,s);return}
+  // The quick-removal question still shows the pins; they go once it is confirmed.
+  if s.mode==8{if let Some(view)=crate::hud_layout::right_top(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,crate::hud_layout::current(s.base)){draw_pins(&Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw},s);}confirmation(&cv,s);return}
   if s.mode==7{draw_notice_demo(&cv,s);return}
-  if s.preview&&s.mode==6{if let Some(r)=s.frozen{draw_notice(&cv,r,lang,s.preview_clock,0);}s.preview_clock+=imgui::get_io().DeltaTime.clamp(0.,0.1);if s.preview_clock>crate::presentation::NOTICE_DURATION+0.6{s.preview_clock=0.;}cv.text(350.,40.,600.,18.,GOLD,&format!("{}    L / R  {}/8   B / Esc",l::PREVIEW[lang],s.preview_panel+1));return}
-  let registering=matches!(s.mode,1|3|5);cv.frame(128.,69.,820.,551.);
+  if s.preview&&s.mode==6{if let Some(r)=s.frozen{draw_notice(&cv,r,None,lang,s.preview_clock,0);}s.preview_clock+=imgui::get_io().DeltaTime.clamp(0.,0.1);if s.preview_clock>crate::presentation::NOTICE_DURATION+0.6{s.preview_clock=0.;}cv.text(350.,40.,600.,18.,GOLD,&format!("{}    L / R  {}/8   B / Esc",l::PREVIEW[lang],s.preview_panel+1));return}
+  let registering=matches!(s.mode,1|3|5);cv.frame(128.,69.,820.,551.);crate::skill_view::open();
   cv.heading(146.,82.,782.,if registering{l::REGISTER_TITLE[lang]}else{l::TITLE[lang]});
   if s.preview{cv.text(350.,35.,600.,17.,GOLD,&format!("{}    L / R  {}/8   B / Esc",l::PREVIEW[lang],s.preview_panel+1));}
   if registering{cv.section(146.,123.,320.,l::TARGET[lang]);cv.rect(146.,154.,320.,43.,INSET);cv.icon_plate(154.,160.,31.);if let Some(r)=s.frozen{cv.gear(r,156.,162.,27.);cv.box_text(197.,154.,258.,43.,BODY,WHITE,&name(r,lang),false);}}
@@ -500,9 +520,13 @@ pub fn render(){
   if registering{cv.bar(925.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(925.,676.,160.,crate::icons::B,l::BACK[lang]);}
   else{if s.tab==0&&!s.focus.material&&s.sort.is_none(){cv.bar(755.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(925.,642.,160.,crate::icons::X,l::DELETE[lang]);if s.mode==2&&s.list.slots.iter().any(Option::is_some){cv.bar(925.,676.,160.,crate::icons::Y,l::SORT[lang]);}}cv.bar(755.,676.,160.,crate::icons::B,l::BACK[lang]);}
   if matches!(s.mode,3|4|5){confirmation(&cv,s);}
+  // A modal covers the detail page: no skill panel over it.
+  if matches!(s.mode,3|4|5)||s.sort.is_some(){crate::skill_view::hide();}
   if s.sort.is_some(){sort_dialog(&cv,s);cv.bar(755.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(755.,676.,160.,crate::icons::B,l::BACK[lang]);}
 
  });
+ // After the whole window: a linked panel lands on the same foreground list, above it.
+ crate::skill_view::overlay();
 }
 pub fn menu(){
  if !imgui::tree_node(c"Wishlist"){return}

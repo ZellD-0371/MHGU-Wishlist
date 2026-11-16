@@ -4,7 +4,7 @@ mod name_data;mod language;mod language_pack;mod language_ui;mod description_fil
 mod diagnostics;mod inventory;mod sorting;mod atlas;mod text_cache;mod material_cache;mod font_validation;
 mod binding_model;mod bindings;
 mod hook_guard;mod button_prompts;mod menu_buttons;mod input_chain;mod native_modal;
-mod hud_layout;
+mod hud_layout;mod skill_view;mod katsmithy_model;mod katsmithy;
 mod model;mod generated;mod locales;mod native;mod controller;mod storage;mod ui;mod smithy;mod equipment;mod navigation;mod sound;mod icons;mod interaction;mod session;mod profiles;mod text_blob;mod text_data;mod presentation;mod game_menu;mod sound_cues;mod notifications;mod badge_model;mod native_badges;mod completed;
 use core::{cell::UnsafeCell,sync::atomic::{AtomicBool,Ordering},ffi::c_void};
 use model::{List,Recipe};
@@ -19,12 +19,21 @@ struct State{
 impl State{
  fn new()->Self{Self{pending_preferences:None,sort:None,settings_loaded:false,settings_notice:0,profile:None,game_ready:false,base:0,installed:false,input_ready:false,list:List::default(),loaded:false,mode:0,selected:0,tab:0,aggregate:interaction::AggregateFocus::default(),preview_clock:0.,target:None,frozen:None,stock:[0;4096],stock_ready:false,material_cache:material_cache::Cache::default(),notices:notifications::Queue::default(),notice_demo:None,notice_test_case:2,cooldown:180,timer:0.,events:0,status:0,preview:false,preview_panel:0,detail_page:0,frozen_cost:0,focus:interaction::Focus::default()}}
  fn capture(&mut self,owner:u32,recipe:Recipe,cost:u32){if self.mode==0&&recipe.valid(){self.target=Some(Target{owner,recipe,cost});}}
- fn active(&self)->Option<Recipe>{self.target.filter(|t|native::visible(t.owner,self.base)).map(|t|t.recipe).or_else(||native_badges::selected_registered(&self.list,self.base).map(|(_,r)|r))}
- fn at_smithy(&self)->bool{self.active().is_some()||native_badges::smithy_visible(self.base)}
+ fn active(&self)->Option<Recipe>{
+  if katsmithy::tree_dialog(self.base){return None}
+  // KatSmithy's armor cursor also covers pieces the game's own selection skips.
+  if let Some(r)=katsmithy::armor_view(self.base).and_then(katsmithy::armor_selection){return Some(r)}
+  // On KatSmithy's tree the game's selection is used when it is the same node.
+  if let Some((kind,id,level))=katsmithy::weapon_view(self.base).and_then(katsmithy::weapon_selection){
+   if let Some(t)=self.target.filter(|t|native::visible(t.owner,self.base)&&t.recipe.kind==kind&&t.recipe.id==id&&katsmithy_model::weapon_node_level(t.recipe.level)==level){return Some(t.recipe)}
+   return katsmithy::weapon_recipe(kind,id,level)
+  }
+  self.target.filter(|t|native::visible(t.owner,self.base)).map(|t|t.recipe).or_else(||native_badges::selected_registered(&self.list,self.base).map(|(_,r)|r))}
+ fn at_smithy(&self)->bool{!katsmithy::tree_dialog(self.base)&&(self.active().is_some()||native_badges::smithy_visible(self.base))}
  fn open(&mut self,register:bool){
   if !self.game_ready||self.profile.is_none()||!self.loaded||!self.input_ready||crate::language::current().is_none(){return}
   self.sort=None;self.focus=interaction::Focus::default();self.preview=false;self.notice_demo=None;self.tab=0;self.aggregate=interaction::AggregateFocus::default();self.preview_clock=0.;self.status=0;self.detail_page=0;sound::request_open(self.list.open_sound);
-  if register{if let Some(r)=self.active(){self.frozen=Some(r);self.frozen_cost=self.target.map_or(0,|t|t.cost);if let Some(slot)=self.list.registered(r){self.mode=8;self.selected=slot;self.focus.yes=false;}else{self.mode=1;self.selected=self.list.slots.iter().position(Option::is_none).unwrap_or(0)}}}else{self.frozen=None;self.mode=2;self.selected=0;}
+  if register{if let Some(r)=self.active(){self.frozen=Some(r);self.frozen_cost=self.target.filter(|t|t.recipe==r).map_or_else(||equipment::cost(r),|t|t.cost);if let Some(slot)=self.list.registered(r){self.mode=8;self.selected=slot;self.focus.yes=false;}else{self.mode=1;self.selected=self.list.slots.iter().position(Option::is_none).unwrap_or(0)}}}else{self.frozen=None;self.mode=2;self.selected=0;}
  }
 }
 struct Shared{lock:AtomicBool,data:UnsafeCell<Option<State>>}
@@ -58,6 +67,10 @@ fn main(){
 #[unsafe(no_mangle)]
 pub extern "C" fn forge_onUpdate(dt:f32){
  let (base,installed)=STATE.with(|s|(s.base,s.installed));if !installed{return}
+ // Every plugin is loaded and bound before the first update; wrap KatSmithy's
+ // input imports once, then keep its view of ownership current each frame.
+ katsmithy::install_once();
+ controller::publish_ownership();
  // Some HID imports remain unresolved until a pad style is actually used.
  // Keep input disabled until both the menu hook and at least one import work.
  let now_ready=controller::retry(base);
@@ -92,7 +105,9 @@ pub extern "C" fn forge_onUpdate(dt:f32){
  if let Some(base)=poll{let mut stock=[0;4096];let valid=native::inventory(base,&mut stock);STATE.with(|s|{
   let material=if s.mode==2&&s.tab==1{s.material_cache.refresh(&s.list,&s.stock,s.stock_ready,generated::PROVISIONS);s.material_cache.totals().get(s.aggregate.material).map(|m|m.id)}else{None};
   if valid!=s.stock_ready||(valid&&s.stock!=stock){s.material_cache.inventory_changed();}
+  let progress=if s.stock_ready&&valid{s.list.progress(&s.stock,&stock)}else{alloc::vec::Vec::new()};
   s.stock_ready=valid;if valid{s.stock=stock;if let Some(id)=material{s.material_cache.refresh(&s.list,&s.stock,true,generated::PROVISIONS);if let Some(index)=s.material_cache.totals().iter().position(|m|m.id==id){s.aggregate.material=index;}}let events=s.list.poll(&stock,generated::PROVISIONS);
+   for &(i,material,have,need) in &progress{if events.contains(&i){continue}if let Some(e)=s.list.slots[i]{s.notices.push_progress(e.recipe,notifications::Progress{material,have,need});}}
    for i in events{if let Some(e)=s.list.slots[i]{s.notices.push(e.recipe);}}
   }else{for e in s.list.slots.iter_mut().flatten(){e.ready=None}}
  });}
