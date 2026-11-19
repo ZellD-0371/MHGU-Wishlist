@@ -10,6 +10,8 @@ extern crate alloc;
 #[path="../src/interaction.rs"]mod interaction;
 #[path="../src/session.rs"]mod session;
 #[path="../src/profiles.rs"]mod profiles;
+#[path="../src/sksim_model.rs"]mod sksim_model;
+#[path="../src/mod_menu_model.rs"]mod mod_menu_model;
 use model::*;
 #[path="../src/hook_guard.rs"]mod hook_guard;
 #[test]fn shared_destructor_keeps_existing_forge_hook_chain(){
@@ -471,26 +473,27 @@ fn language_files(language:usize,kind:usize)->Vec<u8>{let code=locales::CODES[la
 }
 
 #[path="../src/atlas.rs"]mod atlas;
-mod atlas_art{include!("../src/icons_generated.rs");}
+mod atlas_art{include!("../src/icons_generated.rs");include!("../src/prompt_icons_generated.rs");}
 #[test]fn hd_and_low_memory_atlases_preserve_all_sprite_rectangles_and_reject_other_sizes(){
  let hd_bytes=std::fs::metadata("assets/wishlist-atlas.rgba").unwrap().len();let low_bytes=std::fs::metadata("assets/low-memory/wishlist-atlas.rgba").unwrap().len();
  let hd=atlas::layout(hd_bytes).unwrap();let low=atlas::layout(low_bytes).unwrap();
- assert!(!hd.low_memory&&low.low_memory);assert_eq!((hd.width,hd.height),(2048,1024));assert_eq!((low.width,low.height),(1024,352));assert_eq!(low.uv_width,hd.uv_width);assert_eq!(low.uv_height,704);
+ assert!(!hd.low_memory&&low.low_memory);assert_eq!((hd.width,hd.height),(2048,1024));assert_eq!((low.width,low.height),(1024,402));assert_eq!(low.uv_width,hd.uv_width);assert_eq!(low.uv_height,804);
  for size in [0,1,low_bytes-1,low_bytes+1,hd_bytes-1,hd_bytes+1]{assert!(atlas::layout(size).is_none());}
- for sprite in atlas_art::ART{
+ for sprite in atlas_art::ART.iter().chain(atlas_art::EXTRA){
   let x0=sprite.x as f32/low.uv_width as f32*low.width as f32;let y0=sprite.y as f32/low.uv_height as f32*low.height as f32;
   let x1=(sprite.x+sprite.w) as f32/low.uv_width as f32*low.width as f32;let y1=(sprite.y+sprite.h) as f32/low.uv_height as f32*low.height as f32;
   assert!((x0-sprite.x as f32*0.5).abs()<0.001&&(y0-sprite.y as f32*0.5).abs()<0.001);
   assert!(x1<=low.width as f32&&y1<=low.height as f32);assert!((x1-x0-sprite.w as f32*0.5).abs()<0.001&&(y1-y0-sprite.h as f32*0.5).abs()<0.001);
  }
- assert_eq!(atlas_art::ART.len(),159);assert_eq!(hd_bytes,8388608);assert_eq!(low_bytes,1441792);
- assert!(low_bytes*100/hd_bytes<=18);
+ assert_eq!(atlas_art::ART.len(),159);assert_eq!(hd_bytes,8388608);assert_eq!(low_bytes,1646592);assert_eq!(atlas_art::EXTRA.len(),atlas_art::KEY_START-atlas_art::EXTRA_START+atlas_art::KEYS.len());assert_eq!(button_prompts::PAD_EXTRA_TILE,atlas_art::PAD_EXTRA);assert_eq!(atlas_art::EXTRA_START,atlas_art::ART.len());
+ // LowMemory halves both sides of the cropped HD atlas: exactly a quarter of its bytes.
+ assert_eq!(low_bytes*4,std::fs::metadata("assets/hd/wishlist-atlas.rgba").unwrap().len());
 }
 #[test]fn cropped_hd_atlas_preserves_all_sprite_pixels_and_legacy_uv_coordinates(){
  let original=std::fs::read("assets/wishlist-atlas.rgba").unwrap();let cropped=std::fs::read("assets/hd/wishlist-atlas.rgba").unwrap();let hd=atlas::layout(cropped.len() as u64).unwrap();
- assert!(!hd.low_memory);assert_eq!((hd.width,hd.height,hd.uv_width,hd.uv_height),(2048,704,2048,704));assert_eq!(cropped.len(),5767168);assert_eq!(cropped,&original[..cropped.len()]);
+ assert!(!hd.low_memory);assert_eq!((hd.width,hd.height,hd.uv_width,hd.uv_height),(2048,804,2048,804));assert_eq!(cropped.len(),6586368);assert_eq!(cropped,&original[..cropped.len()]);
  assert!(original[cropped.len()+3..].iter().step_by(4).all(|alpha|*alpha==0));
- for sprite in atlas_art::ART{assert!((sprite.x+sprite.w)<=hd.width&&(sprite.y+sprite.h)<=hd.height);
+ for sprite in atlas_art::ART.iter().chain(atlas_art::EXTRA){assert!((sprite.x+sprite.w)<=hd.width&&(sprite.y+sprite.h)<=hd.height);
   for row in sprite.y..sprite.y+sprite.h{let at=(row as usize*2048+sprite.x as usize)*4;let end=at+sprite.w as usize*4;assert_eq!(cropped[at..end],original[at..end]);}
   for y in [sprite.y,sprite.y+sprite.h]{let normalized=y as f32/hd.uv_height as f32;assert!((normalized*hd.height as f32-y as f32).abs()<0.0001);}
  }
@@ -639,4 +642,78 @@ fn stock_decoder_reports_unrelated_invalid_slot_and_recovers() {
  q.push_progress(r,p(5));assert_eq!(q.visible().next().unwrap().1.progress,Some(p(4)));
  q.push(r);assert_eq!(q.visible_count(),1);assert_eq!(q.visible().next().unwrap().1.progress,None);
  q.push_progress(r,p(4));assert_eq!(q.visible().next().unwrap().1.progress,None);
+}
+
+#[test]fn keyboard_prompt_names_exist_in_the_atlas(){
+ for usage in 0..256{if let Some(name)=button_prompts::hid_key_name(usage){assert!(atlas_art::KEYS.contains(&name),"{}",name);}}
+ for usage in [4,29,30,39,40,44,58,69,79,82]{assert!(button_prompts::hid_key_name(usage).is_some());}
+ for key in ["Space","Return","Escape","Left Shift","Right Ctrl","Left Alt","A","z","0","5","F1","F12","Up","Page Down","Mouse Left","Mouse Right","Wheel Up","Keypad Enter","Tab","Backspace"]{
+  let name=button_prompts::recomp_key_name(key).unwrap_or_else(||panic!("{}",key));assert!(atlas_art::KEYS.contains(&name),"{}",name);
+ }
+ assert_eq!(button_prompts::recomp_key_name("F13"),None);assert_eq!(button_prompts::recomp_key_name("Banana"),None);
+}
+#[test]fn menu_keys_follow_recomp_menu_actions_then_keybinds(){
+ use button_prompts::{parse_keys,menu_key,parse_keyboard_prompts};
+ let ini="[Keybinds]
+A = Return
+X = Mouse Left
+Y = Q, E
+L = none
+[Actions]
+Enable = on
+ManageMenus = on
+[Actions.Kbm]
+MenuY = mouse:Left | key:R
+MenuTabR = key:T
+";
+ let c=parse_keys(ini);
+ assert_eq!(menu_key(&c,0).as_deref(),Some("Mouse Left"));assert_eq!(menu_key(&c,1).as_deref(),Some("Mouse Right"));
+ assert_eq!(menu_key(&c,2).as_deref(),Some("Space"));assert_eq!(menu_key(&c,3).as_deref(),Some("R"));
+ assert_eq!(menu_key(&c,4),None);assert_eq!(menu_key(&c,5).as_deref(),Some("T"));
+ // Without menu actions the plain rows apply; a mouse-only row keeps the pad prompt.
+ let plain=parse_keys(&ini.replace("ManageMenus = on","ManageMenus = off"));
+ assert_eq!(menu_key(&plain,2),None);assert_eq!(menu_key(&plain,3).as_deref(),Some("Q"));
+ assert!(parse_keyboard_prompts(""));assert!(!parse_keyboard_prompts("[Controls]
+KeyboardPrompts = off"));
+}
+
+#[test]fn keyboard_actions_follow_menu_keys_not_pad_keybinds(){
+ use button_prompts::{parse_keys,keyboard_word};
+ // The user's file: B = Space in [Keybinds], menus managed by actions.
+ let ini="[Keybinds]\nA = Mouse Right\nB = Space\nX = Mouse Left\nY = R\nL = Q\nR = E\nZL = Tab\nZR = T\n[Actions]\nEnable=1\nManageMenus=1\n";
+ let c=parse_keys(ini);let space=44;let r=21;let q=20;let tab=43;
+ assert_eq!(keyboard_word(&c,|u|u==space),0x1000);
+ assert_eq!(keyboard_word(&c,|u|u==r),0x8000);
+ assert_eq!(keyboard_word(&c,|u|u==q),0x100);
+ assert_eq!(keyboard_word(&c,|u|u==tab),0x400);
+ assert_eq!(keyboard_word(&c,|_|false),0);
+ // Without menu actions the [Keybinds] rows apply: Space is then B.
+ let plain=parse_keys(&ini.replace("ManageMenus=1","ManageMenus=0"));
+ assert_eq!(keyboard_word(&plain,|u|u==space),0x4000);
+ assert_eq!(button_prompts::recomp_key_usage("Left Shift"),Some(225));assert_eq!(button_prompts::recomp_key_usage("Mouse Left"),None);
+}
+#[test]fn wishlist_windows_stay_inside_a_letterboxed_picture(){
+ // 16:10 forced in a 16:9 window: the picture is 1728x1080 in the middle.
+ let hud=hud_layout::HudSize{render_width:1728,render_height:1080,ui_width:1280};
+ let v=hud_layout::picture(1920.,1080.,100,Some(hud)).unwrap();
+ assert!((v.scale-1.35).abs()<1e-4&&(v.ox-96.).abs()<1e-3&&(v.oy-54.).abs()<1e-3);
+ assert!(v.ox>=96.&&v.ox+1280.*v.scale<=1824.+1e-3);
+ // A real 16:10 screen, or no renderer data: the whole window.
+ let w=hud_layout::picture(1920.,1200.,100,Some(hud_layout::HudSize{render_width:1920,render_height:1200,ui_width:1280})).unwrap();
+ assert!((w.scale-1.5).abs()<1e-4&&w.ox.abs()<1e-3);
+ let n=hud_layout::picture(1920.,1080.,100,None).unwrap();
+ assert!((n.scale-1.5).abs()<1e-4&&n.ox.abs()<1e-3);
+}
+#[test]fn recomp_mouse_maps_over_the_game_picture(){
+ use hud_layout::{mouse,HudSize as H};
+ // 16:10 forced in a 16:9 window: the console's 1280x720 spans the 1728x1080 picture.
+ let p=Some(H{render_width:1728,render_height:1080,ui_width:1728});
+ let (x0,y0)=mouse(0.,0.,1920.,1080.,p);let (x1,y1)=mouse(1280.,720.,1920.,1080.,p);
+ assert!((x0-96.).abs()<1e-3&&y0.abs()<1e-3&&(x1-1824.).abs()<1e-3&&(y1-1080.).abs()<1e-3);
+ // 21:9 picture with a 16:9 HUD: x covers only the HUD's middle part.
+ let w=Some(H{render_width:2560,render_height:1080,ui_width:1280});
+ let (a,_)=mouse(0.,0.,2560.,1080.,w);let (b,_)=mouse(1280.,0.,2560.,1080.,w);
+ assert!((a-320.).abs()<1e-2&&(b-2240.).abs()<1e-2);
+ // No renderer data: the whole window.
+ assert_eq!(mouse(640.,360.,1920.,1080.,None),(960.,540.));
 }

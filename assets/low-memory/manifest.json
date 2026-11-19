@@ -1,12 +1,12 @@
 {
   "profile": "LowMemory",
-  "source_sha256": "247b04198d3cb1d5c611d86198d2deb40b0770729fdf81988cf1334916e06f16",
-  "sha256": "043080aafb1d70e341b37822a2a1fb3cbd57045ef080869c45ea2d2ee1962d01",
+  "source_sha256": "6e45b38967bcd9ab06c59a67be02dd824d3d587b0d3ad44ebbfe02b8760a278b",
+  "sha256": "ddaeeafbd09088102596336bd573ae5509c59c376b692c11676c756709ccf6d0",
   "source_width": 2048,
   "source_height": 1024,
-  "cropped_height": 704,
+  "cropped_height": 804,
   "width": 1024,
-  "height": 352,
-  "bytes": 1441792,
-  "sprites": 159
+  "height": 402,
+  "bytes": 1646592,
+  "sprites": 278
 }

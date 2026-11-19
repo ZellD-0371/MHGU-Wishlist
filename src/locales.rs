@@ -28,7 +28,9 @@ pub const EMPTY:Label=["Empty","未登记","未登錄","未登録","미등록","
 pub const NOTICE:Label=["All required materials have been gathered.","所需素材已齐备。","所需素材已齊備。","必要素材が揃いました。","필요 소재가 갖추어졌습니다.","Alle benötigten Materialien sind vorhanden.","Tous les matériaux nécessaires sont réunis.","Tutti i materiali necessari sono disponibili.","Has reunido todos los materiales necesarios."];
 pub const CONFIRM:Label=["Confirm","确定","確定","決定","결정","Bestätigen","Confirmer","Conferma","Confirmar"];
 pub const BACK:Label=["Back","返回","返回","戻る","돌아가기","Zurück","Retour","Indietro","Volver"];
-pub const DELETE:Label=["Remove","删除","刪除","登録解除","등록 삭제","Entfernen","Supprimer","Rimuovi","Eliminar"];
+pub const DELETE:Label=["Remove","删除","刪除","削除","삭제","Entfernen","Supprimer","Rimuovi","Eliminar"];
+pub const CLEAR_ALL:Label=["Delete all","全部删除","全部刪除","すべて削除","전부 삭제","Alle löschen","Tout supprimer","Elimina tutto","Borrar todo"];
+pub const CLEAR_QUESTION:Label=["Delete every entry in the wishlist.\nContinue?","将删除愿望清单的全部内容。\n是否继续？","將刪除願望清單的全部內容。\n是否繼續？","ウィッシュリストをすべて削除します。\nよろしいですか？","찜 목록을 전부 삭제합니다.\n그렇게 하시겠습니까?","Alle Einträge der Wunschliste löschen.\nFortfahren?","Supprimer toute la liste de souhaits.\nContinuer ?","Eliminare tutta la lista desideri.\nContinuare?","Se borrará toda la lista de deseos.\n¿Continuar?"];
 pub const DELETE_QUESTION:Label=["Delete the registered contents.\nContinue?","删除登记内容。\n是否继续？","刪除登錄內容。\n是否繼續？","登録内容を削除します。\nよろしいですか？","등록 내용을 삭제합니다.\n그렇게 하시겠습니까?","Registrierten Eintrag löschen.\nFortfahren?","Supprimer le contenu enregistré.\nContinuer ?","Eliminare il contenuto registrato.\nContinuare?","Se eliminará el registro.\n¿Continuar?"];
 pub const REPLACE_QUESTION:Label=["Overwrite registered contents.\nContinue?","将覆盖登记内容。\n是否继续？","將覆蓋登錄內容。\n是否繼續？","登録内容を上書きします。\nよろしいですか？","등록 내용을 덮어씁니다.\n그렇게 하시겠습니까?","Eintrag wird überschrieben.\nFortfahren?","Écraser le contenu enregistré.\nContinuer ?","Sovrascrivere il contenuto.\nContinuare?","Se sobrescribirá el registro.\n¿Continuar?"];
 pub const YES:Label=["Yes","是","是","はい","예","Ja","Oui","Sì","Sí"];
@@ -101,3 +103,15 @@ pub const SORT_WAIT:Label=["Checking material counts. Please try again shortly."
 pub const LANGUAGE_FAILED:Label=["Language resources could not be loaded. The previous language is retained.","无法加载语言资源，已保留原语言。","無法載入語言資源，已保留原語言。","言語データを読み込めませんでした。以前の言語を維持します。","언어 리소스를 불러오지 못했습니다. 기존 언어를 유지합니다.","Sprachdateien konnten nicht geladen werden. Die bisherige Sprache bleibt aktiv.","Impossible de charger les ressources. La langue précédente est conservée.","Impossibile caricare la lingua. Rimane attiva quella precedente.","No se pudo cargar el idioma. Se mantiene el anterior."];
 
 pub const ENABLE_LOGGING:Label=["Enable logging","启用日志记录","啟用日誌記錄","ログ記録を有効にする","로그 기록 활성화","Protokollierung aktivieren","Activer la journalisation","Abilita registrazione log","Activar registro de diagnóstico"];
+// Skill-Simulator guest link: hint labels and dialog text ("{}" is a count).
+pub const SET_REGISTER:Label=["Add set","整套加入","整套加入","セットを登録","찜 세트 등록","Set eintragen","Ajouter l'ensemble","Aggiungi set","Añadir conjunto"];
+pub const SET_QUESTION:Label=["Add {} armor pieces to the wishlist.\nContinue?","将{}件防具加入愿望清单。\n是否继续？","將{}件防具加入願望清單。\n是否繼續？","防具{}部位をウィッシュリストに登録します。\nよろしいですか？","방어구 {}부위를 찜 목록에 등록합니다.\n그렇게 하시겠습니까?","{} Rüstungsteile zur Wunschliste hinzufügen.\nFortfahren?","Ajouter {} pièces d'armure à la liste.\nContinuer ?","Aggiungere {} pezzi d'armatura alla lista.\nContinuare?","Se añadirán {} piezas de armadura.\n¿Continuar?"];
+pub const PART_QUESTION:Label=["Add this armor piece to the wishlist.\nContinue?","将此防具加入愿望清单。\n是否继续？","將此防具加入願望清單。\n是否繼續？","この防具をウィッシュリストに登録します。\nよろしいですか？","이 방어구를 찜 목록에 등록합니다.\n그렇게 하시겠습니까?","Dieses Rüstungsteil zur Wunschliste hinzufügen.\nFortfahren?","Ajouter cette pièce d'armure à la liste.\nContinuer ?","Aggiungere questo pezzo d'armatura alla lista.\nContinuare?","Se añadirá esta pieza de armadura.\n¿Continuar?"];
+pub const SHORT:Label=["The wishlist needs {} more free slots.\nNothing was added.","愿望清单还缺{}个空位。\n未加入任何防具。","願望清單還缺{}個空位。\n未加入任何防具。","ウィッシュリストの空きが{}つ足りません。\n何も登録していません。","찜 목록 자리가 {}칸 부족합니다.\n아무것도 등록하지 않았습니다.","Es fehlen {} freie Plätze.\nNichts wurde eingetragen.","Il manque {} emplacements libres.\nRien n'a été ajouté.","Mancano {} posti liberi.\nNon è stato aggiunto nulla.","Faltan {} espacios libres.\nNo se añadió nada."];
+pub const REMOVED:Label=["Removed.","已删除。","已刪除。","削除しました。","삭제했습니다.","Entfernt.","Retiré.","Rimosso.","Quitado."];
+// Why a set piece is not added from Skill-Simulator, and the overflow count.
+pub const REASON_OWNED:Label=["Owned","已拥有","已擁有","所持済み","보유 중","Im Besitz","Possédé","Posseduto","En posesión"];
+pub const REASON_REWARD:Label=["Quest reward","任务奖励","任務獎勵","クエスト報酬","퀘스트 보상","Questbelohnung","Récompense","Ricompensa","Recompensa"];
+pub const REASON_REGISTERED:Label=["Already added","已加入","已加入","登録済み","이미 찜함","Schon eingetragen","Déjà ajouté","Già aggiunto","Ya añadido"];
+pub const REASON_NO_RECIPE:Label=["Not craftable","无法生产","無法生產","生産不可","제작 불가","Nicht herstellbar","Non fabricable","Non forgiabile","No fabricable"];
+pub const MORE:Label=["+{} more","另有{}件","另有{}件","ほか{}件","외 {}개","+{} weitere","+{} autres","+{} altri","+{} más"];

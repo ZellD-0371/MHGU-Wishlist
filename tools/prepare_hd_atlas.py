@@ -6,7 +6,7 @@ OUT=ROOT/'assets/hd'
 
 def prepare(check=False):
     source=(ROOT/'assets/wishlist-atlas.rgba').read_bytes()
-    sprites=[tuple(map(int,m)) for m in re.findall(r'Sprite\{x:(\d+),y:(\d+),w:(\d+),h:(\d+)\}',(ROOT/'src/icons_generated.rs').read_text())]
+    sprites=[tuple(map(int,m)) for m in re.findall(r'Sprite\{x:(\d+),y:(\d+),w:(\d+),h:(\d+)\}',''.join((ROOT/'src'/n).read_text(encoding='utf-8') for n in ('icons_generated.rs','prompt_icons_generated.rs')))]
     assert len(source)==2048*1024*4 and sprites
     assert all(0<=x and 0<=y and w>0 and h>0 and x+w<=2048 and y+h<=1024 for x,y,w,h in sprites)
     bottom=max(y+h for x,y,w,h in sprites)

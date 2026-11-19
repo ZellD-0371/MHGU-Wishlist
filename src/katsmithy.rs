@@ -32,13 +32,13 @@ static VIEW_AT:AtomicU32=AtomicU32::new(0);
 static TREE_LAYOUT_OK:AtomicBool=AtomicBool::new(false);
 static STICK_LATCH:[AtomicBool;2]=[const{AtomicBool::new(false)};2];
 #[repr(C)]#[derive(Default)]
-struct Map{base:u64,size:u64,kind:u32,attr:u32,perm:u32,ipc:u32,device:u32,pad:u32}
+pub(crate) struct Map{pub(crate) base:u64,pub(crate) size:u64,kind:u32,attr:u32,pub(crate) perm:u32,ipc:u32,device:u32,pad:u32}
 // Horizon AArch32 QueryMemory; Recomp implements the same call.
 #[unsafe(naked)]
-unsafe extern "C" fn query(_info:*mut Map,_address:u32)->u32{
+pub(crate) unsafe extern "C" fn query(_info:*mut Map,_address:u32)->u32{
  core::arch::naked_asm!("mov r2, r1","svc #6","bx lr");
 }
-fn readable(address:u32,size:u32)->bool{
+pub(crate) fn readable(address:u32,size:u32)->bool{
  let Some(end)=address.checked_add(size)else{return false};let mut at=address;
  while at<end{let mut m=Map::default();if unsafe{query(&mut m,at)}!=0||m.perm&1==0{return false}
  let next=m.base.saturating_add(m.size);if next<=at as u64{return false}at=next.min(end as u64) as u32;

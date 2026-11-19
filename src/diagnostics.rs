@@ -10,7 +10,7 @@ static INIT_FAILED:AtomicU32=AtomicU32::new(0);
 pub fn init_status(bit:u32,ok:bool){if ok{INIT_FAILED.fetch_and(!bit,Ordering::Relaxed);INIT_OK.fetch_or(bit,Ordering::Relaxed);}else{INIT_OK.fetch_and(!bit,Ordering::Relaxed);INIT_FAILED.fetch_or(bit,Ordering::Relaxed);}}
 static CLOCK:AtomicU32=AtomicU32::new(0);
 struct Channel{seen:AtomicBool,key:AtomicU32,time:AtomicU32,suppressed:AtomicU32}
-static CHANNELS:[Channel;16]=[const{Channel{seen:AtomicBool::new(false),key:AtomicU32::new(0),time:AtomicU32::new(0),suppressed:AtomicU32::new(0)}};16];
+static CHANNELS:[Channel;17]=[const{Channel{seen:AtomicBool::new(false),key:AtomicU32::new(0),time:AtomicU32::new(0),suppressed:AtomicU32::new(0)}};17];
 /// First sample immediately; changed failures at most once/second, identical ones once/30s.
 pub fn due(seen:bool,old:u32,key:u32,elapsed:u32)->bool{!seen||elapsed>=if old==key{30_000}else{1_000}}
 pub fn enabled()->bool{ENABLED.load(Ordering::Relaxed)}

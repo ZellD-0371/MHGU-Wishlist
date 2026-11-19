@@ -1,6 +1,6 @@
 use forge::{imgui::DrawList,sys::imgui::{self as sys,ImVec2,ImTextureRef}};
 use core::sync::atomic::{AtomicUsize,Ordering};
-include!("icons_generated.rs");
+include!("icons_generated.rs");include!("prompt_icons_generated.rs");
 pub const A:usize=107;pub const B:usize=108;pub const X:usize=109;pub const Y:usize=110;pub const L3:usize=111;pub const R3:usize=112;pub const ZL:usize=113;pub const ZR:usize=114;pub const DPAD:usize=115;pub const DPAD_LEFT:usize=118;pub const L:usize=116;pub const R:usize=117;
 static ATLAS_UV_HEIGHT:AtomicUsize=AtomicUsize::new(ATLAS_HEIGHT as usize);
 static LAYOUT:AtomicUsize=AtomicUsize::new(0);
@@ -23,8 +23,10 @@ pub fn init(){unsafe{
 }}
 
 pub fn draw(d:DrawList,tile:usize,x:f32,y:f32,w:f32,h:f32,tint:u32,flip:bool){
- let tile=if (107..119).contains(&tile){tile+LAYOUT.load(Ordering::Relaxed)*12}else{tile};
- let Some(sprite)=ART.get(tile) else{return};if d.raw().is_null(){return}
+ // Controller prompts exist once per layout: twelve base slots and four extras.
+ let layout=LAYOUT.load(Ordering::Relaxed);
+ let tile=if (107..119).contains(&tile){tile+layout*12}else if (PAD_EXTRA..PAD_EXTRA+4).contains(&tile){tile+layout*4}else{tile};
+ let Some(sprite)=ART.get(tile).or_else(||EXTRA.get(tile.wrapping_sub(EXTRA_START))) else{return};if d.raw().is_null(){return}
  let Some(texture)=(unsafe{TEXTURE}) else{return};
  let uv_height=ATLAS_UV_HEIGHT.load(Ordering::Acquire) as f32;
  let (left,right)=if flip{(sprite.x+sprite.w,sprite.x)}else{(sprite.x,sprite.x+sprite.w)};
@@ -32,3 +34,7 @@ pub fn draw(d:DrawList,tile:usize,x:f32,y:f32,w:f32,h:f32,tint:u32,flip:bool){
 }
 pub fn equipment(kind:u8)->usize{if kind==25{14}else{*EQUIP.get(kind as usize).unwrap_or(&46)}}
 pub fn material(id:u16)->(usize,u32){ITEMS.get(id as usize).map_or((46,0xffffffff),|r|(r.0 as usize,PALETTE[r.1 as usize]))}
+/// Atlas tile of a keyboard/mouse prompt by its Kenney name (e.g. "keyboard_f5",
+/// "mouse_left"), for keyboard and mouse prompts.
+#[allow(dead_code)] // keyboard/mouse prompts are drawn once keyboard input lands
+pub fn key_tile(name:&str)->Option<usize>{KEYS.iter().position(|k|*k==name).map(|i|KEY_START+i)}

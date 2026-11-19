@@ -3,6 +3,10 @@ use core::{ptr,sync::atomic::{AtomicU32,AtomicBool,Ordering}};
 use crate::{STATE,native::rd};
 pub const SORT:u32=32768;pub const DETAIL:u32=1024;pub const TAB_PREV:u32=2048;pub const TAB_NEXT:u32=4096;
 pub const PAD_REGISTER:u32=8192;pub const PAD_LIST:u32=16384;
+/// Decide on our Hunter's Notes entry in the game menu.
+pub const MENU_OPEN:u32=1<<16;
+/// Y: delete every entry (after a confirmation). Sort moved to +.
+pub const CLEAR:u32=1<<17;
 pub const OPEN_REGISTER:u32=1;pub const OPEN_LIST:u32=2;pub const ACCEPT:u32=4;pub const BACK:u32=8;pub const UP:u32=16;pub const DOWN:u32=32;pub const PREV:u32=64;pub const NEXT:u32=128;pub const DELETE:u32=256;pub const TAB:u32=512;
 const GOT:[u32;5]=[0x1838494,0x1838498,0x183849c,0x18384a0,0x18384a4];
 // Do not call an unresolved input import during plugin startup.
@@ -15,10 +19,19 @@ static RELEASE:AtomicU32=AtomicU32::new(0);
 static mut NATIVE_MODAL:crate::native_modal::Gate=crate::native_modal::Gate::new();
 static SHOULDER_HELD:AtomicU32=AtomicU32::new(0);
 static NAV_RELEASE:AtomicU32=AtomicU32::new(0);
+// A pressed on our Hunter's Notes entry stays withheld until released.
+static MENU_PICK:AtomicBool=AtomicBool::new(false);
+static PLUS_HELD:AtomicU32=AtomicU32::new(0);
 unsafe fn filter(index:usize,state:u32,id:u32){
  let address=ORIGINAL[index].load(Ordering::Acquire);let call:unsafe extern "C" fn(u32,u32)=unsafe{core::mem::transmute(address)};unsafe{call(state,id)};
  if state<0x10000||unsafe{rd(state+32)}&1==0{return}
  let buttons=unsafe{rd(state+8)};
+ // Recomp: + has no menu action word; read it here (keys bound to + in
+ // [Keybinds] arrive as the same pad bit, so the keyboard works too).
+ if crate::button_prompts::is_recomp(){
+  let plus=buttons&(1<<10);let pressed=plus&!PLUS_HELD.swap(plus,Ordering::AcqRel);
+  if pressed!=0&&!forge::graphics::Graphics::is_menu_visible()&&!crate::bindings::capturing(){STATE.with(|s|if s.mode!=0{s.events|=SORT});}
+ }
  let raw=crate::bindings::snapshot(buttons,unsafe{rd(state+16)} as i32,unsafe{rd(state+20)} as i32,unsafe{rd(state+24)} as i32,unsafe{rd(state+28)} as i32);
  crate::bindings::publish(raw);
  let keyboard=crate::bindings::keyboard_active();let raw=if keyboard{KEYBOARD_WAITING.store(true,Ordering::Release);0}else if KEYBOARD_WAITING.load(Ordering::Acquire){if raw==0{KEYBOARD_WAITING.store(false,Ordering::Release);}0}else{raw};
@@ -37,12 +50,20 @@ unsafe fn filter(index:usize,state:u32,id:u32){
   if menu{false}else{capture||open||s.events&(PAD_REGISTER|PAD_LIST)!=0}
  });
  crate::diagnostics::event(1,"pad input: raw / guarded / keyboard blocked / modal",[buttons,raw,u32::from(keyboard),u32::from(captured)]);
+ // Hardware and emulators: A on our Hunter's Notes entry opens the list and
+ // never reaches the game (Recomp does this on the menu word below).
+ if !crate::button_prompts::is_recomp(){
+  let a=buttons&1!=0;
+  if a&&!menu&&!captured&&crate::game_menu::hot()&&!MENU_PICK.swap(true,Ordering::AcqRel){STATE.with(|s|s.events|=MENU_OPEN);}
+  if !a{MENU_PICK.store(false,Ordering::Release);}
+  else if MENU_PICK.load(Ordering::Acquire){unsafe{ptr::write_unaligned((state+8) as *mut u32,rd(state+8)&!1)};}
+ }
  if !crate::button_prompts::is_recomp(){
   // Capture at HID level even if focus changes the game's active menu path.
   let (pressed,blocked)=unsafe{(&mut *core::ptr::addr_of_mut!(NATIVE_MODAL)).step(raw,captured,menu)};
   if captured&&!capture&&!menu{STATE.with(|s|{
    if s.mode!=0{
-    for(mask,event)in [(1,ACCEPT),(2,BACK),(4,DELETE),(8,SORT),((1<<12)|(1<<16),PREV),((1<<13)|(1<<17),UP),((1<<14)|(1<<18),NEXT),((1<<15)|(1<<19),DOWN)]{
+    for(mask,event)in [(1,ACCEPT),(2,BACK),(4,DELETE),(8,CLEAR),(1<<10,SORT),((1<<12)|(1<<16),PREV),((1<<13)|(1<<17),UP),((1<<14)|(1<<18),NEXT),((1<<15)|(1<<19),DOWN)]{
      if pressed&mask!=0{s.events|=event;}
     }
     let (left,right,detail)=crate::menu_buttons::shoulders(pressed,false);
@@ -74,15 +95,23 @@ fn menu_translate(object:u32,word:u32)->u32{
  let inner=crate::input_chain::inner_word(word,owned,&mut latch);
  NAV_RELEASE.store(latch,Ordering::Release);
  let mapped=original!(object,inner);
+ let chain=mapped;
  let mapped=if owned{crate::input_chain::owned_actions(mapped,word,crate::katsmithy::input_wrapped())}else{mapped};
+ // Keyboard in use on Recomp: button actions come from Recomp's menu key
+ // settings (the prompts show the same keys); directions stay as received.
+ let keyboard=owned&&recomp&&crate::bindings::keyboard_active();
+ let mapped=match crate::button_prompts::keyboard_actions(crate::bindings::key_down_usage).filter(|_|keyboard){Some(keys)=>(mapped&crate::input_chain::NAV_WORD&0xff)|keys,None=>mapped};
+ if owned&&(word|chain|mapped)!=0{crate::diagnostics::event(16,"menu input while open: word / chain / result / keyboard+katsmithy",[word,chain,mapped,u32::from(keyboard)|(u32::from(crate::katsmithy::input_wrapped())<<1)]);}
  let shoulder_word=mapped;
  let shoulder_pressed=shoulder_word&!SHOULDER_HELD.swap(shoulder_word,Ordering::AcqRel);
  STATE.with(|s|{
   let modal=s.mode!=0||capture||s.events&(PAD_REGISTER|PAD_LIST)!=0;
   let previous=INTERNAL_HELD.swap(mapped,Ordering::AcqRel);let pressed=mapped&!previous;
-  let release=RELEASE.load(Ordering::Relaxed)&mapped;
+  let mut release=RELEASE.load(Ordering::Relaxed)&mapped;
   if overlay{RELEASE.store(0,Ordering::Relaxed);return mapped}
-  if recomp&&s.mode!=0&&!capture{for(mask,event)in [(0x2000,ACCEPT),(0x4000,BACK),(0x1000,DELETE),(0x8000,SORT),(0x80,PREV),(0x10,UP),(0x20,NEXT),(0x40,DOWN)]{if pressed&mask!=0{s.events|=event}}}
+  // Recomp: decide on our Hunter's Notes entry opens the list, not the game's choice.
+  if recomp&&!modal&&crate::game_menu::hot()&&mapped&0x2000!=0{if pressed&0x2000!=0{s.events|=MENU_OPEN;}release|=0x2000;}
+  if recomp&&s.mode!=0&&!capture{for(mask,event)in [(0x2000,ACCEPT),(0x4000,BACK),(0x1000,DELETE),(0x8000,CLEAR),(0x80,PREV),(0x10,UP),(0x20,NEXT),(0x40,DOWN)]{if pressed&mask!=0{s.events|=event}}}
   if recomp&&s.mode!=0&&!capture {
    let (left,right,detail)=crate::menu_buttons::shoulders(shoulder_pressed,recomp);
    if left{s.events|=TAB_PREV;}if right{s.events|=TAB_NEXT;}if detail{s.events|=DETAIL;}

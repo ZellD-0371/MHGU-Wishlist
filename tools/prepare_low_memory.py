@@ -16,7 +16,7 @@ def emit(meta):
 
 def prepare(check=False):
     source=ROOT/'assets/wishlist-atlas.rgba';data=source.read_bytes()
-    rectangles=[tuple(map(int,m)) for m in re.findall(r'Sprite\{x:(\d+),y:(\d+),w:(\d+),h:(\d+)\}',(ROOT/'src/icons_generated.rs').read_text())]
+    rectangles=[tuple(map(int,m)) for m in re.findall(r'Sprite\{x:(\d+),y:(\d+),w:(\d+),h:(\d+)\}',''.join((ROOT/'src'/n).read_text(encoding='utf-8') for n in ('icons_generated.rs','prompt_icons_generated.rs')))]
     assert rectangles and len(data)==2048*1024*4
     assert all(x>=0 and y>=0 and x+w<=2048 and y+h<=1024 for x,y,w,h in rectangles)
     occupied=max(y+h for x,y,w,h in rectangles)

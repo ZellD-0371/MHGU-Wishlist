@@ -23,10 +23,11 @@ for name in set(cmap.values()):
 (OUT/'horizontal.bin').write_bytes(b''.join(struct.pack('<2f',*horizontal.get(cmap.get(c),(0.,0.))) for c in range(65536)))
 source=(ROOT/'src/ui.rs').read_text(encoding='utf-8')
 canvas=source[source.index('pub(crate) static mut FONT'):source.index('fn save(')]
-draw=source[source.index('fn materials('):source.index('pub fn render()')]
+# Drawing code only: the Skill-Simulator link and pointer input need the runtime.
+draw=source[source.index('fn materials('):source.index('// Skill-Simulator guest link (render thread only).')]+source[source.index('/// Mouse targets of our window'):source.index('/// Pointer input on our open window')]
 render=source[source.index('pub fn render()'):source.index('pub fn menu()')]
-render='pub fn render(){let cv=Canvas::new().unwrap();STATE.with(|s|{'+render.split(' STATE.with(|s|{',1)[1]
-modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['button_prompts','sorting','binding_model','text_cache','material_cache','model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications','katsmithy_model'])
+render='pub fn render(){let cv=Canvas::new().unwrap();let engaged=false;STATE.with(|s|{'+render.split(' STATE.with(|s|{',1)[1]
+modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['button_prompts','sorting','binding_model','text_cache','material_cache','model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications','katsmithy_model','mod_menu_model'])
 stub=r'''
 
 extern crate alloc;extern crate self as forge;
@@ -68,9 +69,9 @@ pub mod imgui{
  }
 }
 mod icons{
- use super::*;include!(concat!(env!("WISHLIST_SRC"),"/icons_generated.rs"));include!(concat!(env!("WISHLIST_SRC"),"/item_text_generated.rs"));
+ use super::*;include!(concat!(env!("WISHLIST_SRC"),"/icons_generated.rs"));include!(concat!(env!("WISHLIST_SRC"),"/prompt_icons_generated.rs"));include!(concat!(env!("WISHLIST_SRC"),"/item_text_generated.rs"));
  pub const Y:usize=110;pub const A:usize=107;pub const B:usize=108;pub const X:usize=109;pub const L3:usize=111;pub const R3:usize=112;pub const ZL:usize=113;pub const ZR:usize=114;pub const DPAD:usize=115;pub const DPAD_LEFT:usize=118;pub const L:usize=116;pub const R:usize=117;
- pub fn init(){}pub fn set_layout(_:usize){}
+ pub fn init(){}pub fn set_layout(_:usize){}pub fn key_tile(n:&str)->Option<usize>{KEYS.iter().position(|k|*k==n).map(|i|KEY_START+i)}
  pub fn draw(_:imgui::DrawList,t:usize,x:f32,y:f32,w:f32,h:f32,c:u32,f:bool){println!("[\"icon\",{},{},{},{},{},{},{}]",t,x,y,w,h,c,f)}
  pub fn equipment(k:u8)->usize{*EQUIP.get(k as usize).unwrap_or(&46)}pub fn material(id:u16)->(usize,u32){let r=ITEMS[id as usize];(r.0 as usize,PALETTE[r.1 as usize])}
 }
@@ -78,8 +79,10 @@ mod text_data{pub fn init(){}pub fn description(k:u8,id:u16,l:usize)->&'static s
 mod native_badges{pub struct Marker{pub x:f32,pub y:f32}pub fn available()->bool{false}pub fn markers(_: &super::List,_:u32)->Vec<Marker>{vec![]}pub fn markers_with(_: &super::List,_:u32,_:bool)->Vec<Marker>{vec![]}}
 mod katsmithy{#[derive(Clone,Copy)]pub struct ArmorView;#[derive(Clone,Copy)]pub struct WeaponView;pub fn armor_view(_:u32)->Option<ArmorView>{None}pub fn weapon_view(_:u32)->Option<WeaponView>{None}pub fn tree_dialog(_:u32)->bool{false}pub fn transform(w:f32,h:f32)->Option<(f32,f32,f32)>{super::katsmithy_model::transform(w,h)}pub fn armor_pins(_:ArmorView,_:&super::List)->Vec<(f32,f32)>{vec![]}pub fn weapon_pins(_:WeaponView,_:&super::List)->Vec<(f32,f32)>{vec![]}}
 mod skill_view{pub fn show(_:u8,_:u16,_:u8,_:f32,_:f32,_:f32){}pub fn open(){}pub fn hide(){}pub fn overlay(){}pub fn begin_frame(){}}
-mod game_menu{pub fn visible(_:u32)->bool{false}}
+mod game_menu{pub fn set_other_open(_:bool){}pub const INDEX:u8=6;pub fn visible(_:u32)->bool{false}pub fn entry()->bool{false}pub fn help_available()->bool{false}pub fn set_help(_:Option<&str>){}}
 mod sound{pub enum Cue{Open}pub fn cue(_:Cue){}}use sound::Cue;
+mod c{pub const ACCEPT:u32=4;pub const PREV:u32=64;pub const NEXT:u32=128;pub const DETAIL:u32=1024;pub const TAB_PREV:u32=2048;pub const TAB_NEXT:u32=4096;}
+mod bindings{pub fn keyboard_prompts()->bool{false}pub fn key_label(_:u32)->String{String::new()}}
 struct State{sort:Option<sorting::Dialog>,installed:bool,loaded:bool,game_ready:bool,base:u32,mode:u8,list:List,stock:[u32;4096],stock_ready:bool,material_cache:material_cache::Cache,aggregate:interaction::AggregateFocus,selected:usize,focus:interaction::Focus,preview:bool,preview_panel:usize,preview_clock:f32,frozen:Option<Recipe>,detail_page:usize,tab:usize,status:u8,notices:notifications::Queue,notice_demo:Option<notifications::Demo>,notice_test_case:usize}
 impl State{fn active(&self)->Option<Recipe>{None}fn at_smithy(&self)->bool{false}}
 thread_local!{static STORE:RefCell<Option<State>>=const{RefCell::new(None)};}
@@ -106,7 +109,7 @@ fn main(){
 import os
 env=os.environ.copy();env['WISHLIST_SRC']=(ROOT/'src').as_posix()
 subprocess.run(['rustc','+nightly','--edition','2024',str(OUT/'capture.rs'),'-Awarnings','-o',str(OUT/'capture.exe')],env=env,check=True)
-sprite_source=(ROOT/'src/icons_generated.rs').read_text(encoding='utf-8');sprites=[tuple(map(int,m)) for m in re.findall(r'Sprite\{x:(\d+),y:(\d+),w:(\d+),h:(\d+)\}',sprite_source)]
+sprite_source=''.join((ROOT/'src'/n).read_text(encoding='utf-8') for n in ('icons_generated.rs','prompt_icons_generated.rs'));sprites=[tuple(map(int,m)) for m in re.findall(r'Sprite\{x:(\d+),y:(\d+),w:(\d+),h:(\d+)\}',sprite_source)]
 atlas_dir=ROOT/('assets/low-memory' if LOW_MEMORY else 'assets/hd')
 atlas_meta=json.loads((atlas_dir/'manifest.json').read_text())
 atlas=Image.frombytes('RGBA',(atlas_meta['width'],atlas_meta['height']),(atlas_dir/'wishlist-atlas.rgba').read_bytes())
@@ -203,7 +206,7 @@ for lang in range(9):
     if screen=='category' and clips and abs(clips[-1][1]-380.)<.01 and abs(clips[-1][3]-419.)<.01:
      assert abs(ink_center-399.5)<.6,(lang,text,'category material row centre');centred+=1
     if screen=='materials-long' and lang==0 and x==188 and text=='Gore Magala Feeler+':
-     assert abs((ink_center-215)/35-round((ink_center-215)/35))<.01,'Long material left its row centre'
+     assert abs((ink_center-217)/40-round((ink_center-217)/40))<.01,'Long material left its row centre'
      centred+=1;long_checked=True
     if screen=='prompts' and lang==0 and text=='Remove':
      assert size>=23 and abs(ink_center-542)<.6,'Removal prompt is small or not centred'
@@ -222,7 +225,7 @@ for lang in range(9):
      for key,expected_x in [('YES',536),('NO',744),('CLOSE',640)]:
       if text==labels[key][lang]:assert abs(ink_x-expected_x)<.6,(lang,screen,key);modal_checks+=1
     if screen=='notice' and text==labels['NOTICE'][lang]:
-     toast=next(a for typ,*a in commands if typ=='rect' and abs(a[3]-a[1]-80)<.1 and a[4]==0xe0282620)
+     toast=next(a for typ,*a in commands if typ=='rect' and abs(a[3]-a[1]-80)<.1 and a[4]==0xf02d281f)
      badge=0
      assert abs(ink_x-(toast[0]+badge+toast[2])*.5)<.6,(lang,'notification centre')
      title=next(a for typ,*a in commands if typ=='text' and a[4].startswith(labels['TITLE'][lang]+' \"'))
@@ -231,7 +234,7 @@ for lang in range(9):
      assert abs(toast[2]-toast[0]-expected)<1,(lang,'excess notification padding')
      notice_checks+=1
     if re.fullmatch(r'◀ \d+ / \d+ ▶',text):
-     top=580. if ink_center>550 else 484.;expected=306. if top==580. else 336.
+     top=560. if ink_center>567 else 550. if ink_center>551 else 528.;expected=336. if top==528. else 306.
      left=next(a for typ,*a in commands if typ=='icon' and a[0]==118 and a[2]==top)
      right=next(a for typ,*a in commands if typ=='icon' and a[0]==115 and a[2]==top)
      assert abs(ink_x-expected)<.6 and abs(ink_center-top-12.5)<.6,(lang,screen,'page centre')

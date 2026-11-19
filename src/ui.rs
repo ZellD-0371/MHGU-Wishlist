@@ -4,9 +4,14 @@ use alloc::{vec::Vec,format,string::String,ffi::CString};
 use forge::{imgui,sys::imgui::{ImVec2,ImDrawFlags,ImGuiComboFlags,ImGuiSelectableFlags}};
 use crate::{STATE,State,model::{Recipe,List},locales as l,generated as g,controller as c,storage,sound::{self,Cue}};
 pub(crate) static mut FONT:Option<imgui::ImFont>=None;
-// Steel workshop palette; native button bars below deliberately keep their own art.
-const WHITE:u32=0xffebece9;const GOLD:u32=0xff75bbe9;const BLUE:u32=0xffd3c493;const RED:u32=0xff8da1ff;const GREEN:u32=0xffaccea4;const MUTED:u32=0xffc0c0b7;
-const PANEL:u32=0xf4282620;const INSET:u32=0xee1d1a15;const RAISED:u32=0xff373229;const EDGE:u32=0xff807d70;const RULE:u32=0xff575347;
+// MHXX in-game palette, shared with Skill-Simulator (ImGui ABGR).
+const WHITE:u32=0xffe9eceb;const GOLD:u32=0xff6ce6f8;const BLUE:u32=0xffe8c586;const RED:u32=0xff7a8af0;const GREEN:u32=0xff9ad49f;const MUTED:u32=0xffa6a398;
+const PANEL:u32=0xff26221b;const INSET:u32=0xff1c1a16;const RAISED:u32=0xff2d281f;const RULE:u32=0xff4c4636;
+const SELECT:u32=0xff403a2c;const BLACK:u32=0xff000000;const TEAL:[u32;4]=[0xff867f2b;4];
+// Window frame: red double lines over a black band, a green-gold line below.
+const RED_TONES:[u32;4]=[0xff35368a,0xff2729a9,0xff2022b6,0xff1c2ea5];const RED_UNDER:[u32;3]=[0xff217485,0xff148964,0xff258a59];
+// The game's window_sub corner ornament: (x, y, width, gold) one-unit rows.
+const CORNER:&[(u8,u8,u8,bool)]=&[(2,0,10,false),(2,1,10,false),(0,2,2,false),(2,2,10,true),(12,2,2,false),(0,3,2,false),(2,3,10,true),(12,3,2,false),(0,4,2,false),(2,4,2,true),(4,4,10,false),(0,5,2,false),(2,5,2,true),(4,5,10,false),(0,6,2,false),(2,6,2,true),(4,6,2,false),(6,6,6,true),(12,6,2,false),(0,7,2,false),(2,7,2,true),(4,7,2,false),(6,7,6,true),(12,7,2,false),(0,8,2,false),(2,8,2,true),(4,8,6,false),(10,8,2,true),(12,8,2,false),(0,9,2,false),(2,9,2,true),(4,9,6,false),(10,9,2,true),(12,9,2,false),(0,10,2,false),(2,10,10,true),(12,10,2,false),(0,11,2,false),(2,11,10,true),(12,11,2,false),(2,12,10,false),(2,13,10,false)];
 // Noto's em includes substantial vertical space: 25 em pixels gives ~18px visible copy.
 const BODY:f32=25.;
 // Existing HD atlas art: equipment list, material container, decoration.
@@ -26,37 +31,53 @@ pub fn name(r:Recipe,lang:usize)->String{match r.kind{
 fn item(id:u16,lang:usize)->String{table_name(1,id as usize*2,lang)}
 struct Canvas{scale:f32,ox:f32,oy:f32,draw:imgui::DrawList}
 impl Canvas{
- fn new()->Option<Self>{let draw=imgui::DrawList::foreground();if draw.raw().is_null(){return None}let sz=imgui::get_io().DisplaySize;let view=crate::presentation::viewport(sz.x,sz.y,STATE.with(|s|s.list.ui_scale))?;Some(Self{scale:view.scale,ox:view.ox,oy:view.oy,draw})}
+ fn new()->Option<Self>{let draw=imgui::DrawList::foreground();if draw.raw().is_null(){return None}let sz=imgui::get_io().DisplaySize;let (percent,base)=STATE.with(|s|(s.list.ui_scale,s.base));let view=crate::hud_layout::picture(sz.x,sz.y,percent,crate::hud_layout::current(base))?;Some(Self{scale:view.scale,ox:view.ox,oy:view.oy,draw})}
  fn pixels(&self,size:f32)->f32{((size*self.scale+0.5) as u32).max(1) as f32}
  fn p(&self,x:f32,y:f32)->ImVec2{ImVec2{x:self.ox+x*self.scale,y:self.oy+y*self.scale}}
  fn rect(&self,x:f32,y:f32,w:f32,h:f32,color:u32){self.draw.add_rect_filled(self.p(x,y),self.p(x+w,y+h),color,0.);}
  fn line(&self,x:f32,y:f32,x2:f32,y2:f32,color:u32){self.draw.add_line(self.p(x,y),self.p(x2,y2),color,self.scale);}
- fn gradient(&self,x:f32,y:f32,w:f32,h:f32,left:u32,right:u32){self.draw.add_rect_filled_multicolor(self.p(x,y),self.p(x+w,y+h),left,right,right,left);}
- fn metal(&self,x:f32,y:f32,w:f32,h:f32,color:u32){
-  let cut=8_f32.min(h*0.2);let points=[self.p(x+cut,y),self.p(x+w-cut,y),self.p(x+w,y+cut),self.p(x+w,y+h-cut),self.p(x+w-cut,y+h),self.p(x+cut,y+h),self.p(x,y+h-cut),self.p(x,y+cut)];
-  // Recomp mirrors an ImVec2* as one object, so never pass point arrays to its
-  // polygon APIs. These value-only primitives preserve the chamfered silhouette.
-  self.rect(x+cut,y,w-2.*cut,h,color);self.rect(x,y+cut,cut,h-2.*cut,color);self.rect(x+w-cut,y+cut,cut,h-2.*cut,color);
-  for (a,b,c) in [(0,7,self.p(x+cut,y+cut)),(1,2,self.p(x+w-cut,y+cut)),(3,4,self.p(x+w-cut,y+h-cut)),(5,6,self.p(x+cut,y+h-cut))]{self.draw.add_triangle_filled(points[a],points[b],c,color);}
-  for i in 0..points.len(){self.draw.add_line(points[i],points[(i+1)%points.len()],EDGE,self.scale);}
-  self.line(x+cut+1.,y+2.,x+w-cut-1.,y+2.,0x506f7b7e);self.line(x+cut,y+h-2.,x+w-cut,y+h-2.,0xaa100e0c);
+ /// The XX window border: colored double lines, black side bands, gold corners.
+ fn border(&self,x:f32,y:f32,w:f32,h:f32,tones:[u32;4],under:&[u32],opacity:f32){
+  let a=|c:u32|crate::presentation::alpha(c,opacity);let (x1,y1)=(x+w,y+h);
+  self.rect(x,y+8.,3.,h-16.,a(BLACK));self.rect(x1-3.,y+8.,3.,h-16.,a(BLACK));
+  for (i,&c) in tones.iter().enumerate(){let yy=2.+i as f32;self.rect(x+8.,y+yy,w-16.,1.,a(c));self.rect(x+8.,y1-yy-1.,w-16.,1.,a(c));}
+  self.rect(x+8.,y+1.,w-16.,1.,a(BLACK));self.rect(x+8.,y1-2.,w-16.,1.,a(BLACK));
+  for (i,&c) in under.iter().enumerate(){let yy=6.+i as f32;self.rect(x+4.,y+yy,w-8.,1.,a(c));self.rect(x+4.,y1-yy-1.,w-8.,1.,a(c));}
+  for flip_y in [false,true]{for flip_x in [false,true]{for &(rx,ry,rw,gold) in CORNER{
+   let (rx,ry,rw)=(rx as f32,ry as f32,rw as f32);
+   let px=if flip_x{x1-rx-rw}else{x+rx};let py=if flip_y{y1-ry-1.}else{y+ry};
+   self.rect(px,py,rw,1.,a(if gold{GOLD}else{BLACK}));
+  }}}
  }
- fn frame(&self,x:f32,y:f32,w:f32,h:f32){
-  self.metal(x+2.,y+4.,w,h,0x50000000);self.metal(x,y,w,h,PANEL);
-  for px in [x+12.,x+w-15.]{self.rect(px,y+9.,3.,3.,0xffa7a49a);self.rect(px+1.,y+10.,1.,1.,INSET);}
+ /// A main window: dark panel in the red XX frame.
+ fn frame(&self,x:f32,y:f32,w:f32,h:f32){self.rect(x,y,w,h,PANEL);self.border(x,y,w,h,RED_TONES,&RED_UNDER,1.);}
+ /// A dialog or message box: raised panel in a teal frame.
+ fn popup(&self,x:f32,y:f32,w:f32,h:f32){self.rect(x,y,w,h,RAISED);self.border(x,y,w,h,TEAL,&[],1.);}
+ /// The selection cursor: a lit row with gold corner brackets.
+ fn cursor(&self,x:f32,y:f32,w:f32,h:f32){
+  self.rect(x,y,w,h,SELECT);
+  for (cx,sx) in [(x,1.),(x+w,-1.)]{for (cy,sy) in [(y,1.),(y+h,-1.)]{
+   self.draw.add_line(self.p(cx,cy),self.p(cx+9.*sx,cy),GOLD,2.*self.scale);
+   self.draw.add_line(self.p(cx,cy),self.p(cx,cy+9.*sy),GOLD,2.*self.scale);
+  }}
+ }
+ /// A dialog button: the cursor when focused, an outline otherwise.
+ fn button(&self,x:f32,y:f32,w:f32,h:f32,focused:bool,label:&str){
+  if focused{self.cursor(x,y,w,h);}else{self.draw.add_rect(self.p(x,y),self.p(x+w,y+h),RULE,0.,self.scale,ImDrawFlags::None);}
+  self.box_text(x,y,w,h,26.,if focused{WHITE}else{MUTED},label,true);
  }
  fn heading(&self,x:f32,y:f32,w:f32,text:&str){
-  self.gradient(x,y,w,39.,0xff302f2a,0xff282620);self.rect(x,y+38.,w,2.,GOLD);self.box_text(x+12.,y,w-24.,38.,28.,WHITE,text,false);
+  self.box_text(x+4.,y,w-8.,38.,28.,GOLD,text,false);self.rect(x,y+39.,w,1.,RULE);
  }
  fn section(&self,x:f32,y:f32,w:f32,text:&str){
   let text_w=self.measure(22.,text).min(w-8.);self.fit(x,y,w,22.,GOLD,text);
   if text_w+18.<w{self.line(x+text_w+12.,y+18.,x+w,y+18.,RULE);}
  }
  fn selection(&self,x:f32,y:f32,w:f32,h:f32,selected:bool,alternate:bool){
-  if selected{self.gradient(x,y,w,h,0xff454a4b,0xff514b3f);self.rect(x,y,3.,h,GOLD);self.line(x+3.,y+h-1.,x+w,y+h-1.,0xff5a8ba8);}
-  else{self.rect(x,y,w,h,if alternate{0xff302d25}else{RAISED});self.rect(x,y,3.,h,0xff676457);}
+  if selected{self.cursor(x,y,w,h);}
+  else{self.rect(x,y,w,h,if alternate{0xff2a251e}else{0xff2e2921});}
  }
- fn icon_plate(&self,x:f32,y:f32,size:f32){self.rect(x,y,size,size,0xff1d1810);self.draw.add_rect(self.p(x,y),self.p(x+size,y+size),RULE,1.,self.scale,ImDrawFlags::None);}
+ fn icon_plate(&self,x:f32,y:f32,size:f32){self.rect(x,y,size,size,INSET);self.draw.add_rect(self.p(x,y),self.p(x+size,y+size),RULE,1.,self.scale,ImDrawFlags::None);}
  fn text(&self,x:f32,y:f32,width:f32,size:f32,color:u32,text:&str){
   let d=self.draw;d.push_clip_rect(self.p(x,y),self.p(x+width,y+size*1.8),true);
   if let Some(font)=unsafe{FONT}{d.add_text_with_font(&font,self.pixels(size),self.p(x,y),color,text)}else{d.add_text(self.p(x,y),color,text)}d.pop_clip_rect();
@@ -88,7 +109,25 @@ impl Canvas{
    (crate::icons::DPAD_LEFT,8), (crate::icons::DPAD,9),
    (crate::icons::L3,14), (crate::icons::R3,15),
   ];
+  // + is read from the pad bit (not a menu action): only the keyboard prompt changes.
+  if tile==crate::button_prompts::PAD_EXTRA_TILE+2&&crate::bindings::keyboard_prompts()&&let Some(key)=crate::button_prompts::key_prompt(12){
+   match crate::button_prompts::recomp_key_name(&key).and_then(key_part){
+    Some(Part::Tile(t))=>self.raw_icon(t,x,y,size,tint),
+    Some(Part::Key(label))=>{self.keycap(label,x,y,size,Some(size),true);}
+    _=>{self.rect(x,y,size,size,RAISED);self.box_text(x,y,size,size,size*0.5,WHITE,&crate::button_prompts::short_key(&key),true);}
+   }
+   return
+  }
   if let Some((_,action))=icon_actions.iter().find(|(id,_)|*id==tile){
+   // A keyboard player sees the key of the menu action (Recomp only).
+   if crate::bindings::keyboard_prompts()&&let Some(key)=crate::button_prompts::key_prompt(*action){
+    match crate::button_prompts::recomp_key_name(&key).and_then(key_part){
+     Some(Part::Tile(t))=>self.raw_icon(t,x,y,size,tint),
+     Some(Part::Key(label))=>{self.keycap(label,x,y,size,Some(size),true);}
+     _=>{self.rect(x,y,size,size,RAISED);self.box_text(x,y,size,size,size*0.5,WHITE,&crate::button_prompts::short_key(&key),true);}
+    }
+    return
+   }
    match crate::button_prompts::get(*action){
     crate::button_prompts::Prompt::Original=>{},
     crate::button_prompts::Prompt::Position(p)=>tile=crate::button_prompts::icon_slot(p,0),
@@ -105,12 +144,36 @@ impl Canvas{
  fn gear(&self,r:Recipe,x:f32,y:f32,size:f32){self.gear_alpha(r,x,y,size,1.);}
  fn gear_alpha(&self,r:Recipe,x:f32,y:f32,size:f32,alpha:f32){if r.kind==25{let (tile,tint)=crate::icons::material(r.id);self.icon(tile,x,y,size,crate::presentation::alpha(tint,alpha));}else{self.icon(crate::icons::equipment(r.kind),x,y,size,crate::presentation::alpha(crate::equipment::icon_tint(r),alpha));}}
  fn sprite(&self,tile:usize,x:f32,y:f32,w:f32,h:f32,tint:u32,flip:bool){let p=self.p(x,y);crate::icons::draw(self.draw,tile,p.x,p.y,w*self.scale,h*self.scale,tint,flip);}
- fn shortcut_bar(&self,x:f32,y:f32,chord:u32,label:&str){
-  self.bar(x,y,160.,usize::MAX,"");let count=chord.count_ones() as f32;let width=(count*18.+(count-1.).max(0.)*5.).min(90.);let size=18_f32.min((width-(count-1.).max(0.)*5.)/count.max(1.));let mut px=x+8.;
-  for bit in 0..24{if chord&(1<<bit)==0{continue}if px>x+8.{self.box_text(px-5.,y,5.,28.,13.,WHITE,"+",true);}
-   let tile=match bit{0=>Some(crate::icons::A),1=>Some(crate::icons::B),2=>Some(crate::icons::X),3=>Some(crate::icons::Y),4=>Some(crate::icons::L3),5=>Some(crate::icons::R3),6=>Some(crate::icons::L),7=>Some(crate::icons::R),8=>Some(crate::icons::ZL),9=>Some(crate::icons::ZR),12=>Some(crate::icons::DPAD_LEFT),14=>Some(crate::icons::DPAD),_=>None};
-   if let Some(tile)=tile{self.raw_icon(tile,px,y+(28.-size)*0.5,size,WHITE);}else{let text=match bit{10=>"+",11=>"−",13=>"↑",15=>"↓",16=>"L←",17=>"L↑",18=>"L→",19=>"L↓",20=>"R←",21=>"R↑",22=>"R→",_=>"R↓"};self.rect(px,y+(28.-size)*0.5,size,size,RAISED);self.box_text(px,y,size,28.,16.,WHITE,text,true);}px+=size+5.;
-  }self.box_text(x+width+10.,y,142.-width,28.,24.,WHITE,&label,false);
+ fn shortcut_bar(&self,x:f32,y:f32,chord:u32,key:u32,label:&str){
+  self.bar(x,y,160.,usize::MAX,"");
+  let parts=if crate::bindings::keyboard_prompts()&&key&255!=0{key_parts(key)}else{chord_parts(chord)};
+  // Up to 90 units of prompts; more parts shrink together.
+  let natural=self.parts(&parts,0.,0.,18.,false);let size=18.*(90./natural.max(1.)).min(1.);
+  let width=self.parts(&parts,x+8.,y+(28.-size)*0.5,size,true);
+  self.box_text(x+width+10.,y,142.-width,28.,24.,WHITE,label,false);
+ }
+ /// The window's button hints as the game's own prompt bars (assign.gui:
+ /// black centre, end caps), each as wide as its label, right-aligned left of
+ /// the detail panel's right edge, on one row (scaled down only when it
+ /// would reach the game's help bar on the left).
+ fn hints(&self,items:&[(usize,&str)]){
+  // Fixed order, left to right: other buttons, then − +, X Y, A B.
+  let extra=crate::button_prompts::PAD_EXTRA_TILE;
+  let rank=|tile:usize|match tile{t if t==extra+3=>1,t if t==extra+2=>2,crate::icons::X=>3,crate::icons::Y=>4,crate::icons::A=>5,crate::icons::B=>6,_=>0};
+  let mut items=items.to_vec();items.sort_by_key(|(tile,_)|rank(*tile));let items=&items[..];
+  // One long bar with every hint inside it.
+  let (gap,pad,right,left,y)=(22.,16.,1262.,612.,662.);
+  let widths:Vec<f32>=items.iter().map(|(_,label)|18.+5.+self.measure(24.,label)).collect();
+  let inner:f32=widths.iter().sum::<f32>()+gap*(items.len().saturating_sub(1)) as f32;
+  let k=((right-left-pad*2.)/inner.max(1.)).min(1.);
+  let w=inner*k+pad*2.;let x0=right-w;
+  self.bar(x0,y,w,usize::MAX,"");
+  let mut x=x0+pad;
+  for (i,(tile,label)) in items.iter().enumerate(){
+   let icon=18.*k.max(0.8);self.icon(*tile,x,y+(28.-icon)*0.5,icon,0xffecebe7);
+   self.box_text(x+icon+5.*k,y,(widths[i]-23.)*k+2.,28.,24.*k.max(0.8),0xffecebe7,label,false);
+   x+=(widths[i]+gap)*k;
+  }
  }
  fn bar(&self,x:f32,y:f32,w:f32,button:usize,label:&str){
   // Native assign.gui: 160x28, 156px black centre, 12px HD lobby end caps.
@@ -150,8 +213,14 @@ impl Canvas{
   self.draw.add_circle_filled(self.p(x+3.,y+3.),4.*self.scale,0xff39bbf3,12);
   self.draw.add_circle_filled(self.p(x+2.,y+2.),1.2*self.scale,0xffb1ecff,8);
  }
+ /// A mouse target for the next frame, in this canvas's units.
+ fn hit(&self,x:f32,y:f32,w:f32,h:f32,hit:Hit){
+  if outlined(hit)&&unsafe{*core::ptr::addr_of!(HOVER)}==Some(hit){self.draw.add_rect(self.p(x,y),self.p(x+w,y+h),HOVER_GOLD,6.*self.scale,2.*self.scale,ImDrawFlags::None);}
+  unsafe{(*core::ptr::addr_of_mut!(HITS)).push((x,y,w,h,hit));}
+ }
  fn pager(&self,cx:f32,y:f32,page:usize,pages:usize){
   let text=format!("◀ {} / {} ▶",page,pages.max(1));let width=self.measure(24.,&text)+4.;let left=cx-width*0.5;let icon=25.;let gap=16.;
+  self.hit(left-gap-icon-4.,y-4.,icon+8.,icon+8.,Hit::Event(c::PREV));self.hit(left+width+gap-4.,y-4.,icon+8.,icon+8.,Hit::Event(c::NEXT));
   self.box_text(left,y,width,icon,24.,WHITE,&text,true);
   self.icon(crate::icons::DPAD_LEFT,left-gap-icon,y,icon,WHITE);
   self.icon(crate::icons::DPAD,left+width+gap,y,icon,WHITE);
@@ -215,6 +284,12 @@ fn commit(register:bool){
   else{next.remove_slot(s.selected);selected=s.selected;}Some((next,selected))});
  if let Some((next,selected))=change{if save(next){STATE.with(|s|{s.selected=selected;s.status=1;s.mode=if register{5}else if s.mode==8{0}else{2};s.preview=false;});sound::cue(if register{Cue::Registered}else{Cue::Inspect});}}
 }
+/// Empty the whole wishlist (after its confirmation).
+fn clear_all(){
+ let next=STATE.with(|s|{let mut next=s.list.clone();for i in 0..crate::model::CAPACITY{next.remove_slot(i);}next});
+ if save(next){STATE.with(|s|{s.mode=2;s.selected=0;s.status=0;s.focus=crate::interaction::Focus::default();s.detail_page=0;});sound::cue(Cue::Inspect);}
+ else{STATE.with(|s|s.mode=2);}
+}
 fn apply_sort(){
  let next=STATE.with(|s|{let dialog=s.sort.as_mut()?;let mut next=s.list.clone();if next.sort_display(dialog.criterion,dialog.category,&s.stock,s.stock_ready,g::PROVISIONS).is_err(){dialog.message=1;return None}Some(next)});
  if let Some(next)=next{if save(next){STATE.with(|s|{s.sort=None;s.selected=0;s.focus=crate::interaction::Focus::default();s.detail_page=0;s.status=0;});sound::cue(Cue::Open);}else{STATE.with(|s|{if let Some(d)=s.sort.as_mut(){d.message=2;}});}}
@@ -230,6 +305,7 @@ fn events(events:u32){
    if events&c::BACK!=0{sound::cue(Cue::Close);}else if direction!=0{sound::cue(Cue::Cursor);}else if !was_secondary&&d.secondary{sound::cue(Cue::Inspect);}
    match result{crate::sorting::Action::Cancel=>s.sort=None,crate::sorting::Action::Apply=>return 3,_=>{}}return 0
   }
+  if s.mode==2&&s.tab==0&&!s.focus.material&&!s.preview&&events&c::CLEAR!=0{if s.list.slots.iter().any(Option::is_some){s.mode=9;s.focus.yes=false;sound::cue(Cue::Inspect);}return 0}
   if s.mode==2&&s.tab==0&&!s.focus.material&&!s.preview&&events&c::SORT!=0{if s.list.slots.iter().any(Option::is_some){s.sort=Some(crate::sorting::Dialog::default());sound::cue(Cue::Inspect);}return 0}
   if s.mode==7{
    if events&c::BACK!=0{s.mode=0;s.notice_demo=None;sound::cue(Cue::Close);}
@@ -250,11 +326,11 @@ fn events(events:u32){
   if s.mode==5{if events&(c::ACCEPT|c::BACK)!=0{s.mode=0;sound::cue(Cue::Close);}return 0}
   if events&c::BACK!=0{
    sound::cue(Cue::Close);if s.focus.back(){return 0}
-   match s.mode{3=>s.mode=1,4=>s.mode=2,_=>{s.mode=0;s.preview=false}}return 0
+   match s.mode{3=>s.mode=1,4|9=>s.mode=2,_=>{s.mode=0;s.preview=false}}return 0
   }
-  if matches!(s.mode,3|4|8){
+  if matches!(s.mode,3|4|8|9){
    if events&(c::PREV|c::NEXT|c::UP|c::DOWN)!=0{s.focus.yes=!s.focus.yes;sound::cue(Cue::Cursor);}
-   if events&c::ACCEPT!=0{if s.focus.yes{return if s.mode==3{1}else{2}}s.mode=match s.mode{3=>1,8=>0,_=>2};sound::cue(Cue::Close);}return 0
+   if events&c::ACCEPT!=0{if s.focus.yes{return match s.mode{3=>1,9=>5,_=>2}}s.mode=match s.mode{3=>1,8=>0,_=>2};sound::cue(Cue::Close);}return 0
   }
   if s.tab==0&&selected_recipe(s).is_some()&&events&c::DETAIL!=0{s.detail_page=1-s.detail_page;sound::cue(Cue::Tab);}
   if s.mode==2&&events&(c::TAB|c::TAB_PREV|c::TAB_NEXT)!=0{s.tab=1-s.tab;s.aggregate=crate::interaction::AggregateFocus::default();s.focus.material=false;s.focus.index=0;sound::cue(Cue::Tab);return 0}
@@ -276,7 +352,7 @@ fn events(events:u32){
   if s.mode==2&&s.tab==0&&events&c::DELETE!=0&&s.list.slots[s.selected].is_some(){s.mode=4;s.focus.yes=false;sound::cue(Cue::Inspect);}
   if s.mode==1&&events&c::ACCEPT!=0{if s.list.slots[s.selected].is_some(){s.mode=3;s.focus.yes=false;sound::cue(Cue::Inspect);}else{return 1}}
   0
- });if action==3{apply_sort()}else if action!=0{commit(action==1)}
+ });if action==5{clear_all()}else if action==3{apply_sort()}else if action!=0{commit(action==1)}
 }
 #[cfg(feature="keyboard-input")]
 fn keyboard()->u32{let mut e=0;for (key,event) in [(Key::Enter,c::ACCEPT),(Key::Escape,c::BACK),(Key::Up,c::UP),(Key::Down,c::DOWN),(Key::Left,c::PREV),(Key::Right,c::NEXT),(Key::PageUp,c::PREV),(Key::PageDown,c::NEXT),(Key::Delete,c::DELETE),(Key::Tab,c::TAB),(Key::Q,c::DETAIL),(Key::E,c::DETAIL)]{if Input::is_key_pressed(key){e|=event}}e}
@@ -286,7 +362,7 @@ fn materials(cv:&Canvas,s:&State,r:Recipe,x:f32,y:f32,w:f32){
  let lang=s.list.language;let totals=r.totals();cv.section(x,y,w,l::MATERIALS[lang]);let mut py=y+40.;let step=if r.group>0&&totals.len()>3{35.}else{46.};
  for (i,m) in totals.iter().enumerate(){let owned=s.stock[m.id as usize];let good=s.stock_ready&&owned>=m.count;
   if s.focus.material&&s.focus.index==i{cv.selection(x,py-3.,w,39_f32.min(step-3.),true,false);}
-  let height=39_f32.min(step-3.);let row_y=py-3.;
+  let height=39_f32.min(step-3.);let row_y=py-3.;cv.hit(x,row_y,w,height,Hit::Material(i));
   let (tile,tint)=crate::icons::material(m.id);cv.icon(tile,x+4.,row_y+(height-27.)*0.5,27.,tint);
   cv.box_text(x+38.,row_y,w-193.,height,BODY,if good{WHITE}else{RED},&item(m.id,lang),false);
   cv.box_text(x+w-146.,row_y,65.,height,BODY,WHITE,&format!("× {}",m.count),false);
@@ -303,45 +379,46 @@ fn materials(cv:&Canvas,s:&State,r:Recipe,x:f32,y:f32,w:f32){
  }
 
  if s.focus.material{if let Some(m)=totals.get(s.focus.index){
-  cv.rect(x,465.,w,140.,INSET);cv.line(x,465.,x+w,465.,RULE);let (tile,tint)=crate::icons::material(m.id);cv.icon(tile,x+10.,507.,44.,tint);
+  cv.rect(x,451.,w,140.,INSET);cv.line(x,451.,x+w,451.,RULE);let (tile,tint)=crate::icons::material(m.id);cv.icon(tile,x+10.,493.,44.,tint);
   cv.fit(x+10.,471.,w-20.,26.,GOLD,&item(m.id,lang));
-  if let Some(data)=crate::icons::ITEMS.get(m.id as usize){cv.wrap(x+8.,555.,65.,20.,crate::presentation::rarity(data.2 as i16),&format!("{} {}",l::RARITY[lang],data.2));}
-  cv.paragraph(x+76.,506.,w-88.,94.,BODY,WHITE,&crate::name_data::material_description(m.id,lang));
+  if let Some(data)=crate::icons::ITEMS.get(m.id as usize){cv.wrap(x+8.,541.,65.,20.,crate::presentation::rarity(data.2 as i16),&format!("{} {}",l::RARITY[lang],data.2));}
+  cv.paragraph(x+76.,492.,w-88.,94.,BODY,WHITE,&crate::name_data::material_description(m.id,lang));
 
 
  }}
 }
 fn aggregate(cv:&Canvas,s:&State)->Option<Recipe>{
  let lang=s.list.language;let totals=s.material_cache.totals();let cursor=s.aggregate.material.min(totals.len().saturating_sub(1));
- cv.line(542.,172.,542.,606.,RULE);
+ cv.line(542.,172.,542.,588.,RULE);
  cv.section(146.,168.,380.,l::MATERIALS[lang]);cv.section(561.,168.,367.,l::TITLE[lang]);
  if totals.is_empty(){return None}
  let start=cursor/8*8;
  for (row,m) in totals.iter().skip(start).take(8).enumerate(){
-  let y=199.+row as f32*35.;let focus=start+row==cursor;let owned=s.stock[m.id as usize];
+  let y=199.+row as f32*40.;let focus=start+row==cursor;let owned=s.stock[m.id as usize];
   let color=if s.stock_ready&&owned<m.count{RED}else{WHITE};
-  if focus{cv.selection(146.,y-1.,380.,34.,true,false);}
-  let (tile,tint)=crate::icons::material(m.id);cv.icon(tile,153.,y+3.,27.,tint);
-  cv.box_text(188.,y-1.,197.,34.,BODY,color,&item(m.id,lang),false);cv.box_text(391.,y-1.,58.,34.,BODY,color,&format!("× {}",m.count),false);
-  cv.icon(crate::icons::CHEST,455.,y+5.,22.,WHITE);cv.box_text(487.,y-1.,38.,34.,BODY,color,&if s.stock_ready{format!("{}",owned)}else{"?".into()},false);
-  cv.line(150.,y+33.,526.,y+33.,RULE);
+  if focus{cv.selection(146.,y-1.,380.,38.,true,false);}cv.hit(146.,y-1.,380.,38.,Hit::Aggregate(start+row));
+  let (tile,tint)=crate::icons::material(m.id);cv.icon(tile,153.,y+5.,27.,tint);
+  cv.box_text(188.,y-1.,197.,38.,BODY,color,&item(m.id,lang),false);cv.box_text(391.,y-1.,58.,38.,BODY,color,&format!("× {}",m.count),false);
+  cv.icon(crate::icons::CHEST,455.,y+7.,22.,WHITE);cv.box_text(487.,y-1.,38.,38.,BODY,color,&if s.stock_ready{format!("{}",owned)}else{"?".into()},false);
+  cv.line(150.,y+37.,526.,y+37.,RULE);
  }
- cv.pager(336.,484.,cursor/8+1,totals.len().div_ceil(8));
+ cv.pager(336.,528.,cursor/8+1,totals.len().div_ceil(8));
  let Some(material)=totals.get(cursor) else{return None};
- // Material details follow the only cursor in this tab.
- cv.rect(146.,514.,380.,95.,INSET);cv.fit(155.,515.,235.,23.,GOLD,&item(material.id,lang));
- let (tile,tint)=crate::icons::material(material.id);cv.icon(tile,155.,549.,32.,tint);
- if let Some(data)=crate::icons::ITEMS.get(material.id as usize){cv.fit(404.,518.,113.,18.,crate::presentation::rarity(data.2 as i16),&format!("{} {}",l::RARITY[lang],data.2));}
- cv.paragraph(197.,545.,320.,60.,23.,WHITE,&crate::name_data::material_description(material.id,lang));
+ // Material details follow the only cursor in this tab, under the related list.
+ let (dx,dw,dy)=(561.,367.,452.);
+ cv.line(dx,dy,dx+dw,dy,RULE);cv.fit(dx,dy+6.,250.,23.,GOLD,&item(material.id,lang));
+ if let Some(data)=crate::icons::ITEMS.get(material.id as usize){cv.fit(dx+dw-110.,dy+9.,110.,18.,crate::presentation::rarity(data.2 as i16),&format!("{} {}",l::RARITY[lang],data.2));}
+ let (tile,tint)=crate::icons::material(material.id);cv.icon(tile,dx,dy+42.,32.,tint);
+ cv.paragraph(dx+42.,dy+38.,dw-42.,96.,23.,WHITE,&crate::name_data::material_description(material.id,lang));
  let related=s.material_cache.related(material.id);let count=related.count_ones() as usize;
- // Passive list: every related entry stays visible, with two columns for large lists.
- let columns=if count>16{2}else{1};let rows=count.div_ceil(columns).max(1);let row_height=(355./rows as f32).min(58.);let column_width=367./columns as f32;let icon_size=(row_height-2.).min(30.);let top=225.;
- for (index,slot) in (0..48).filter(|slot|related&(1u64<<slot)!=0).enumerate(){
-  let Some(entry)=s.list.slots[slot] else{continue};let x=561.+(index/rows) as f32*column_width;let y=top+(index%rows) as f32*row_height;let font_size=BODY.min(row_height-2.);let label=name(entry.recipe,lang);
-  let text_width=cv.measure(font_size,&label).min(column_width-icon_size-18.);let group=x+(column_width-icon_size-9.-text_width)*0.5;
-  cv.gear(entry.recipe,group,y,icon_size);cv.box_text(group+icon_size+9.,y,text_width,icon_size,font_size,WHITE,&label,false);
-  if row_height>=42.{cv.line(x+9.,y+icon_size+12.,x+column_width-9.,y+icon_size+12.,RULE);}
+ // Up to three columns of six rows; beyond that the last cell says "+N more".
+ const ROWS:usize=6;let columns=count.div_ceil(ROWS).clamp(1,3);let capacity=ROWS*3;
+ let shown=if count>capacity{capacity-1}else{count};let column_width=367./columns as f32;let (row_height,icon_size,font_size)=(35.,24.,21.);let top=200.;
+ for (index,slot) in (0..48).filter(|slot|related&(1u64<<slot)!=0).take(shown).enumerate(){
+  let Some(entry)=s.list.slots[slot] else{continue};let x=561.+(index/ROWS) as f32*column_width;let y=top+(index%ROWS) as f32*row_height;
+  cv.gear(entry.recipe,x+4.,y+(row_height-icon_size)*0.5,icon_size);cv.box_text(x+icon_size+10.,y,column_width-icon_size-16.,row_height,font_size,WHITE,&name(entry.recipe,lang),false);
  }
+ if count>shown{let index=shown;let x=561.+(index/ROWS) as f32*column_width;let y=top+(index%ROWS) as f32*row_height;cv.box_text(x+4.,y,column_width-8.,row_height,font_size,MUTED,&l::MORE[lang].replace("{}",&format!("{}",count-shown)),false);}
 
  (0..48).find(|slot|related&(1u64<<slot)!=0).and_then(|slot|s.list.slots[slot]).map(|e|e.recipe)
 
@@ -354,11 +431,10 @@ fn draw_notice(cv:&Canvas,r:Recipe,progress:Option<crate::notifications::Progres
  let w=(title_w+40.).max(body_w).min(876.)+32.;
  let right=(imgui::get_io().DisplaySize.x-cv.ox)/cv.scale-18.;let opacity=crate::presentation::notice_opacity(elapsed);let x=right-w;
  // Quest maps occupy the upper-right until ~350; keep the whole toast below them.
- let y=crate::notifications::top(slot);cv.rect(x,y,w,80.,crate::presentation::alpha(0xe0282620,opacity));
- cv.rect(x,y,3.,80.,crate::presentation::alpha(GOLD,opacity));cv.line(x+3.,y,x+w,y,crate::presentation::alpha(EDGE,opacity));
+ let y=crate::notifications::top(slot);cv.rect(x,y,w,80.,crate::presentation::alpha(0xf02d281f,opacity));cv.border(x,y,w,80.,TEAL,&[],opacity);
  let group_x=x+(w-title_w-40.)*0.5;cv.gear_alpha(r,group_x,y+9.,30.,opacity);
  cv.box_bold(group_x+40.,y+7.,title_w+1.,34.,title_size,crate::presentation::alpha(GOLD,opacity),&title,true);
- cv.box_bold(x+16.,y+38.,w-32.,34.,body_size,crate::presentation::alpha(0xff35a5ff,opacity),body,true);
+ cv.box_bold(x+16.,y+38.,w-32.,34.,body_size,crate::presentation::alpha(WHITE,opacity),body,true);
 
 }
 #[cfg_attr(not(feature="debug-ui"),allow(dead_code))] // debug-ui builds
@@ -385,10 +461,10 @@ fn selected_recipe(s:&State)->Option<Recipe>{
  else{s.list.slots[s.selected].map(|e|e.recipe)}
 }
 fn details(cv:&Canvas,s:&State,r:Option<Recipe>){
- let lang=s.list.language;cv.frame(972.,69.,290.,551.);
+ let lang=s.list.language;cv.frame(964.,52.,296.,568.);
  cv.heading(984.,82.,266.,l::DETAILS[lang]);
  let Some(r)=r else{cv.box_text(984.,69.,266.,551.,26.,MUTED,l::NO_EQUIPMENT[lang],true);return};
- cv.icon(crate::icons::ZL,985.,132.,26.,WHITE);cv.center(1023.,129.,188.,25.,WHITE,&format!("{} / 2",s.detail_page+1));cv.icon(crate::icons::ZR,1222.,132.,26.,WHITE);
+ cv.hit(981.,128.,34.,34.,Hit::Detail(0));cv.hit(1218.,128.,34.,34.,Hit::Detail(1));cv.icon(crate::icons::ZL,985.,132.,26.,WHITE);cv.center(1023.,129.,188.,25.,WHITE,&format!("{} / 2",s.detail_page+1));cv.icon(crate::icons::ZR,1222.,132.,26.,WHITE);
  cv.rect(984.,169.,266.,45.,INSET);cv.rect(984.,169.,3.,45.,GOLD);cv.icon_plate(995.,176.,31.);cv.gear(r,997.,178.,27.);cv.box_text(1036.,169.,205.,45.,BODY,GOLD,&name(r,lang),false);
  cv.rect(984.,224.,266.,382.,INSET);
  if s.detail_page==1{
@@ -431,18 +507,18 @@ fn draw_pins(native_cv:&Canvas,s:&crate::State){
  if let Some(view)=armor{for (x,y) in crate::katsmithy::armor_pins(view,&s.list){kat.pin(x,y);}}
  if let Some(view)=tree{for (x,y) in crate::katsmithy::weapon_pins(view,&s.list){kat.pin(x,y);}}
 }
-fn confirmation(cv:&Canvas,s:&State){let lang=s.list.language;cv.draw.add_rect_filled(ImVec2{x:0.,y:0.},imgui::get_io().DisplaySize,0x90000000,0.);cv.frame(400.,307.,480.,176.);
-   let text=if s.mode==5{l::DONE[lang]}else if s.mode==3{l::REPLACE_QUESTION[lang]}else{l::DELETE_QUESTION[lang]};
+fn confirmation(cv:&Canvas,s:&State){let lang=s.list.language;clear_hits();cv.draw.add_rect_filled(ImVec2{x:0.,y:0.},imgui::get_io().DisplaySize,0x90000000,0.);cv.popup(400.,307.,480.,176.);
+   let text=if s.mode==5{l::DONE[lang]}else if s.mode==3{l::REPLACE_QUESTION[lang]}else if s.mode==9{l::CLEAR_QUESTION[lang]}else{l::DELETE_QUESTION[lang]};
    for (i,line) in text.lines().enumerate(){cv.center(418.,327.+i as f32*32.,444.,26.,WHITE,line);}
- if s.mode==5{cv.selection(564.,424.,152.,39.,true,false);cv.box_text(564.,424.,152.,39.,26.,WHITE,l::CLOSE[lang],true);}
- else{for (yes,x,label) in [(true,460.,l::YES[lang]),(false,668.,l::NO[lang])]{cv.selection(x,424.,152.,39.,s.focus.yes==yes,false);cv.box_text(x,424.,152.,39.,26.,WHITE,label,true);}}
+ if s.mode==5{cv.hit(564.,424.,152.,39.,Hit::Event(c::ACCEPT));cv.button(564.,424.,152.,39.,true,l::CLOSE[lang]);}
+ else{for (yes,x,label) in [(true,460.,l::YES[lang]),(false,668.,l::NO[lang])]{cv.hit(x,424.,152.,39.,Hit::Yes(yes));cv.button(x,424.,152.,39.,s.focus.yes==yes,label);}}
   }
 fn sort_dialog(cv:&Canvas,s:&State){
- let Some(d)=s.sort else{return};let lang=s.list.language;
+ let Some(d)=s.sort else{return};let lang=s.list.language;clear_hits();
  cv.draw.add_rect_filled(ImVec2{x:0.,y:0.},imgui::get_io().DisplaySize,if d.secondary{0xa0000000}else{0x70000000},0.);
- let (x,w)=if d.secondary{(280.,720.)}else{(400.,480.)};cv.frame(x,170.,w,420.);cv.heading(x+18.,183.,w-36.,l::SORT[lang]);
+ let (x,w)=if d.secondary{(280.,720.)}else{(400.,480.)};cv.popup(x,170.,w,420.);cv.heading(x+18.,183.,w-36.,l::SORT[lang]);
  let left=x+18.;let column=if d.secondary{326.}else{w-36.};cv.section(left,230.,column,l::SORT_PRIMARY[lang]);
- for (i,text) in l::SORT_CRITERIA.iter().enumerate(){let y=275.+i as f32*62.;cv.selection(left,y,column,48.,d.criterion==i,false);let icon_x=left+10.;let icon_y=y+11.;
+ for (i,text) in l::SORT_CRITERIA.iter().enumerate(){let y=275.+i as f32*62.;if !d.secondary{cv.hit(left,y,column,48.,Hit::Criterion(i));}cv.selection(left,y,column,48.,d.criterion==i,false);let icon_x=left+10.;let icon_y=y+11.;
   if i==0{cv.icon(SORT_ORDER_ICON,icon_x,icon_y,26.,GOLD);}else{
    cv.icon(SORT_STOCK_ICON,icon_x,icon_y,26.,if i==1{GREEN}else{RED});
    let (cx,cy)=(icon_x+20.,icon_y+20.);cv.rect(cx-5.,cy-5.,12.,12.,INSET);
@@ -451,34 +527,323 @@ fn sort_dialog(cv:&Canvas,s:&State){
  if d.secondary{
   // Only the right column is active; shade the complete previous-stage panel.
   cv.rect(left,224.,column,245.,0x99000000);let right=x+382.;cv.section(right,230.,w-400.,l::SORT_SECONDARY[lang]);
-  for (i,text) in l::SORT_CATEGORIES.iter().enumerate(){let y=265.+i as f32*44.;cv.selection(right,y,w-400.,38.,d.category==i,false);let tile=match i{1=>crate::icons::equipment(7),2=>crate::icons::equipment(2),3=>SORT_DECORATION_ICON,4=>crate::icons::equipment(22),_=>crate::icons::equipment(24)};
+  for (i,text) in l::SORT_CATEGORIES.iter().enumerate(){let y=265.+i as f32*44.;cv.hit(right,y,w-400.,38.,Hit::Category(i));cv.selection(right,y,w-400.,38.,d.category==i,false);let tile=match i{1=>crate::icons::equipment(7),2=>crate::icons::equipment(2),3=>SORT_DECORATION_ICON,4=>crate::icons::equipment(22),_=>crate::icons::equipment(24)};
    if i==0{cv.sprite(crate::icons::SLOT_DASH,right+9.,y+16.,24.,7.,MUTED,false);}else{cv.icon(tile,right+8.,y+6.,26.,if i==3{GOLD}else{WHITE});}
    cv.box_text(right+44.,y,w-454.,38.,24.,WHITE,text[lang],false);}
  }
  if d.message>0{cv.paragraph(x+18.,535.,w-36.,45.,21.,RED,if d.message==1{l::SORT_WAIT[lang]}else{l::SAVE_FAILED[lang]});}
 }
+/// A Recomp pointer position (console pixels) in display pixels, mapped over
+/// the game's picture (see hud_layout::mouse).
+fn screen_mouse(x:f32,y:f32)->(f32,f32){
+ let io=imgui::get_io();let base=STATE.with(|s|s.base);
+ crate::hud_layout::mouse(x,y,io.DisplaySize.x,io.DisplaySize.y,crate::hud_layout::current(base))
+}
+/// One prompt part: an atlas sprite or a short text in a raised box.
+enum Part{Tile(usize),Text(String),Key(&'static str)}
+/// Sprites for a pad chord in the shortcut bit layout (HID order).
+fn chord_parts(chord:u32)->Vec<Part>{
+ let extra=crate::button_prompts::PAD_EXTRA_TILE;
+ (0..24).filter(|bit|chord&(1<<bit)!=0).map(|bit|match bit{
+  0=>Part::Tile(crate::icons::A),1=>Part::Tile(crate::icons::B),2=>Part::Tile(crate::icons::X),3=>Part::Tile(crate::icons::Y),
+  4=>Part::Tile(crate::icons::L3),5=>Part::Tile(crate::icons::R3),6=>Part::Tile(crate::icons::L),7=>Part::Tile(crate::icons::R),
+  8=>Part::Tile(crate::icons::ZL),9=>Part::Tile(crate::icons::ZR),10=>Part::Tile(extra+2),11=>Part::Tile(extra+3),
+  12=>Part::Tile(crate::icons::DPAD_LEFT),13=>Part::Tile(extra),14=>Part::Tile(crate::icons::DPAD),15=>Part::Tile(extra+1),
+  16=>Part::Text("L←".into()),17=>Part::Text("L↑".into()),18=>Part::Text("L→".into()),19=>Part::Text("L↓".into()),
+  20=>Part::Text("R←".into()),21=>Part::Text("R↑".into()),22=>Part::Text("R→".into()),_=>Part::Text("R↓".into()),
+ }).collect()
+}
+/// The prompt part of a key by its Kenney name: a wide keycap or a sprite.
+fn key_part(name:&str)->Option<Part>{
+ if let Some(label)=crate::button_prompts::wide_label(name){return Some(Part::Key(label))}
+ crate::icons::key_tile(name).map(Part::Tile)
+}
+/// Sprites for a keyboard binding (Ctrl/Shift/Alt + one HID key).
+fn key_parts(binding:u32)->Vec<Part>{
+ let mut out=Vec::new();
+ for (bit,name) in [(1<<16,"keyboard_ctrl"),(1<<17,"keyboard_shift"),(1<<18,"keyboard_alt")]{if binding&bit!=0{if let Some(p)=key_part(name){out.push(p);}}}
+ let usage=binding&255;
+ if usage!=0{out.push(crate::button_prompts::hid_key_name(usage).and_then(key_part).unwrap_or_else(||Part::Text(crate::bindings::key_label(usage))));}
+ out
+}
+impl Canvas{
+ /// A Recomp pointer position (console pixels, 1280x720) in this canvas's units.
+ fn from_console(&self,x:f32,y:f32)->(f32,f32){let (sx,sy)=screen_mouse(x,y);((sx-self.ox)/self.scale,(sy-self.oy)/self.scale)}
+ /// A light keycap with a word, as wide as the word needs (or `fit` wide).
+ fn keycap(&self,label:&str,x:f32,y:f32,size:f32,fit:Option<f32>,draw:bool)->f32{
+  let inset=size*0.1;let text=size*0.42;let w=fit.unwrap_or_else(||size.max(self.measure(text,label)+size*0.5));
+  if draw{
+   self.draw.add_rect_filled(self.p(x+inset*0.5,y+inset),self.p(x+w-inset*0.5,y+size-inset),0xfff2f2f2,size*0.16*self.scale);
+   self.box_text(x+inset,y+inset,w-inset*2.,size-inset*2.,text,0xff26221d,label,true);
+  }
+  w
+ }
+ /// Prompt parts left to right from x; returns the width used.
+ fn parts(&self,parts:&[Part],x:f32,y:f32,size:f32,draw:bool)->f32{
+  let mut px=x;
+  for (i,part) in parts.iter().enumerate(){
+   if i>0{if draw{self.box_text(px,y,size*0.3,size,size*0.6,WHITE,"+",true);}px+=size*0.3;}
+   match part{
+    Part::Tile(t)=>{if draw{self.raw_icon(*t,px,y,size,WHITE);}px+=size;}
+    Part::Text(text)=>{let w=size.max(self.measure(size*0.55,text)+size*0.3);if draw{self.rect(px,y,w,size,RAISED);self.box_text(px,y,w,size,size*0.55,WHITE,text,true);}px+=w;}
+    Part::Key(label)=>{px+=self.keycap(label,px,y,size,None,draw);}
+   }
+  }
+  px-x
+ }
+}
+// Skill-Simulator guest link (render thread only).
+struct Guest{dialog:Option<crate::sksim_model::Dialog>,gate:crate::sksim_model::Gate,keys:crate::sksim_model::Edges,shortcut:crate::binding_model::Edges}
+static mut GUEST:Guest=Guest{dialog:None,gate:crate::sksim_model::Gate::new(),keys:crate::sksim_model::Edges::new(),shortcut:crate::binding_model::Edges::new()};
+fn guest()->&'static mut Guest{unsafe{&mut *core::ptr::addr_of_mut!(GUEST)}}
+/// The craftable recipe of an armor piece, as on KatSmithy's armor list.
+fn armor_recipe(part:u8,series:u16)->Option<Recipe>{g::RECIPES.iter().find(|r|(r.kind==part||r.kind==0)&&r.id==series&&r.level==0).map(|r|Recipe{kind:part,..*r})}
+/// Dialog geometry in Skill-Simulator's canvas (1280x720 units around its
+/// window centre, its own scale), sized like its own dialogs: top, height, rows.
+fn guest_layout(d:&crate::sksim_model::Dialog)->(f32,f32,usize){
+ use crate::sksim_model::Plan;
+ let rows=if d.outcome.is_some(){0}else{match &d.plan{Plan::Register(r)=>r.len()+d.left_out.len(),Plan::Remove(_)=>1,Plan::None=>0}};
+ let h=24.+56.+if rows>0{10.+rows as f32*34.}else{0.}+18.+38.+20.;
+ (360.-h*0.5,h,rows)
+}
+const GUEST_W:f32=440.;
+/// Buttons of the dialog: (answer is yes, x, y).
+fn guest_buttons(d:&crate::sksim_model::Dialog)->Vec<(bool,f32,f32)>{
+ let (top,h,_)=guest_layout(d);let y=top+h-58.;
+ if d.outcome.is_some(){alloc::vec![(false,565.,y)]}else{alloc::vec![(true,467.,y),(false,663.,y)]}
+}
+fn guest_text(d:&crate::sksim_model::Dialog,lang:usize)->String{
+ use crate::sksim_model::{Plan,Outcome};
+ match d.outcome{
+  Some(Outcome::Registered(_))=>l::DONE[lang].into(),Some(Outcome::Removed)=>l::REMOVED[lang].into(),
+  Some(Outcome::Short(n))=>l::SHORT[lang].replace("{}",&format!("{}",n)),Some(Outcome::Failed)=>l::SAVE_FAILED[lang].into(),
+  None=>match &d.plan{Plan::Register(r) if r.len()>1=>l::SET_QUESTION[lang].replace("{}",&format!("{}",r.len())),Plan::Remove(_)=>l::DELETE_QUESTION[lang].into(),_=>l::PART_QUESTION[lang].into()},
+ }
+}
+/// The canvas the dialog is drawn in: Skill-Simulator's scale, centred on its
+/// window (it can sit to one side); our list canvas when that is unknown.
+fn guest_canvas(v:&crate::sksim_model::View)->Option<Canvas>{
+ let draw=imgui::DrawList::foreground();if draw.raw().is_null(){return None}
+ match crate::sksim::window_rect(){
+  Some(r) if v.scale.is_finite()&&v.scale>0.=>Some(Canvas{scale:v.scale,ox:(r[0]+r[2])*0.5-640.*v.scale,oy:(r[1]+r[3])*0.5-360.*v.scale,draw}),
+  _=>Canvas::new(),
+ }
+}
+fn guest_dialog(cv:&Canvas,d:&crate::sksim_model::Dialog,list:&List,lang:usize){
+ use crate::sksim_model::Plan;
+ let (top,h,rows)=guest_layout(d);let x=640.-GUEST_W*0.5;
+ // Dim Skill-Simulator's window only, as its own dialogs do.
+ match crate::sksim::window_rect(){
+  Some(r)=>cv.draw.add_rect_filled(ImVec2{x:r[0],y:r[1]},ImVec2{x:r[2],y:r[3]},0x90000000,0.),
+  None=>cv.draw.add_rect_filled(ImVec2{x:0.,y:0.},imgui::get_io().DisplaySize,0x90000000,0.),
+ }
+ cv.popup(x,top,GUEST_W,h);
+ let text=guest_text(d,lang);
+ // One or two centred lines; a long single message wraps.
+ if text.contains('\n'){for (i,line) in text.lines().enumerate(){cv.center(x+16.,top+24.+i as f32*28.,GUEST_W-32.,22.,WHITE,line);}}
+ else if cv.measure(24.,&text)<=GUEST_W-32.{cv.box_text(x+16.,top+22.,GUEST_W-32.,58.,24.,WHITE,&text,true);}
+ else{cv.paragraph(x+16.,top+22.,GUEST_W-32.,58.,21.,WHITE,&text);}
+ if rows>0{
+  let recipes:Vec<Recipe>=match &d.plan{Plan::Register(r)=>r.clone(),Plan::Remove(slot)=>list.slots[*slot].map(|e|e.recipe).into_iter().collect(),Plan::None=>Vec::new()};
+  for (i,r) in recipes.iter().enumerate(){let y=top+90.+i as f32*34.;cv.icon_plate(x+48.,y+2.,29.);cv.gear(*r,x+50.,y+4.,25.);cv.box_text(x+88.,y,GUEST_W-120.,33.,22.,WHITE,&name(*r,lang),false);}
+  // Pieces of the set that stay out, dimmed, each with its reason.
+  for (i,(part,series,reason)) in d.left_out.iter().enumerate(){
+   use crate::sksim_model::Reason;
+   let y=top+90.+(recipes.len()+i) as f32*34.;let r=Recipe{kind:*part,id:*series,..Recipe::default()};
+   cv.icon_plate(x+48.,y+2.,29.);cv.gear_alpha(r,x+50.,y+4.,25.,0.5);cv.box_text(x+88.,y,GUEST_W-230.,33.,22.,MUTED,&name(r,lang),false);
+   let why=match reason{Reason::Owned=>l::REASON_OWNED[lang],Reason::Reward=>l::REASON_REWARD[lang],Reason::Registered=>l::REASON_REGISTERED[lang],Reason::NoRecipe=>l::REASON_NO_RECIPE[lang]};
+   let w=cv.measure(18.,why).min(110.);cv.box_text(x+GUEST_W-48.-w,y,w,33.,18.,RED,why,false);
+  }
+ }
+ cv.rect(x+24.,top+h-72.,GUEST_W-48.,1.,RULE);
+ for (yes,bx,by) in guest_buttons(d){
+  let label=if d.outcome.is_some(){l::CLOSE[lang]}else if yes{l::YES[lang]}else{l::NO[lang]};
+  let focused=d.outcome.is_some()||d.yes==yes;
+  if focused{cv.cursor(bx,by,150.,38.);}else{cv.draw.add_rect(cv.p(bx,by),cv.p(bx+150.,by+38.),RULE,0.,cv.scale,ImDrawFlags::None);}
+  cv.box_text(bx,by,150.,38.,20.,if focused{WHITE}else{MUTED},label,true);
+ }
+}
+/// The pointer over the dialog: hovering picks a button, a click answers.
+fn guest_mouse(cv:&Canvas,d:&mut crate::sksim_model::Dialog)->Option<crate::sksim_model::Answer>{
+ use crate::sksim_model::Answer;
+ let m=crate::kbm::mouse()?;let (x,y)=cv.from_console(m.x,m.y);
+ if m.right{return Some(Answer::Close)}
+ let hit=guest_buttons(d).into_iter().find(|(_,bx,by)|(*bx..bx+152.).contains(&x)&&(*by..by+39.).contains(&y));
+ if let Some((yes,_,_))=hit{
+  if d.outcome.is_none()&&m.moved{d.yes=yes;}
+  if m.left{return Some(if d.outcome.is_none()&&yes{Answer::Yes}else{Answer::Close})}
+ }
+ None
+}
+/// Apply a confirmed plan; the dialog then shows the outcome.
+fn guest_commit(plan:&crate::sksim_model::Plan)->crate::sksim_model::Outcome{
+ use crate::sksim_model::{Plan,Outcome};
+ let next=STATE.with(|s|{
+  let mut next=s.list.clone();
+  match plan{
+   Plan::Register(recipes)=>{for r in recipes{let Some(slot)=next.slots.iter().position(Option::is_none) else{return None};if next.register(slot,*r,crate::equipment::cost(*r)).is_err(){return None}if s.stock_ready{if let Some(e)=next.slots[slot].as_mut(){e.ready=Some(r.ready(&s.stock,g::PROVISIONS));}}}}
+   Plan::Remove(slot)=>next.remove_slot(*slot),
+   Plan::None=>return None,
+  }
+  Some(next)
+ });
+ let Some(next)=next else{return Outcome::Failed};
+ if !save(next){return Outcome::Failed}
+ sound::cue(if matches!(plan,Plan::Remove(_)){Cue::Inspect}else{Cue::Registered});
+ match plan{Plan::Register(r)=>Outcome::Registered(r.len()),_=>Outcome::Removed}
+}
+/// Every frame while the list is closed. Returns whether Skill-Simulator's
+/// window is open (our own prompts and pins then stay off the screen).
+fn guest_frame(sim:Option<crate::sksim_model::View>,key_register:bool,pad_ok:bool)->bool{
+ use crate::sksim_model::{self as m,Answer,Plan};
+ let gs=guest();
+ let Some(v)=sim else{gs.dialog=None;gs.gate=m::Gate::new();crate::sksim::request(0.,false);return false};
+ let pressed=gs.keys.step(v.raw);
+ let (list,lang)=STATE.with(|s|(s.list.clone(),s.list.language));
+ let shortcut=gs.shortcut.step(crate::binding_model::active(v.raw&crate::binding_model::PAD_MASK,&list.pad_bindings))&2!=0&&pad_ok;
+ let plan=m::plan(&v,&list,armor_recipe);
+ if gs.dialog.is_none()&&(shortcut||key_register)&&plan!=Plan::None{let mut d=m::Dialog::new(plan.clone(),&list);d.left_out=m::left_out(&v,&list,armor_recipe);gs.dialog=Some(d);sound::cue(Cue::Inspect);}
+ let cv=if gs.dialog.is_some(){guest_canvas(&v)}else{Canvas::new()};
+ if let Some(d)=gs.dialog.as_mut(){
+  let before=d.yes;
+  let answer=d.input(pressed).or_else(||cv.as_ref().and_then(|cv|guest_mouse(cv,d)));
+  if d.yes!=before{sound::cue(Cue::Cursor);}
+  match answer{
+   Some(Answer::Yes)=>{let outcome=guest_commit(&d.plan);d.outcome=Some(outcome);}
+   Some(Answer::Close)=>{gs.dialog=None;sound::cue(Cue::Close);}
+   None=>{}
+  }
+ }
+ let modal=gs.gate.modal(gs.dialog.is_some(),v.raw);
+ let mut width=0.;
+ if let Some(cv)=cv.as_ref(){
+  if let Some(d)=gs.dialog.as_ref(){guest_dialog(cv,d,&list,lang);}
+  else if plan!=Plan::None&&!v.overlay{
+   let label=match &plan{Plan::Remove(_)=>l::QUICK_REMOVE[lang],_ if v.kind==1=>l::SET_REGISTER[lang],_=>l::REGISTER[lang]};
+   let px=Canvas{scale:1.,ox:0.,oy:0.,draw:cv.draw};
+   let s=if v.scale.is_finite()&&v.scale>0.{v.scale}else{1.};
+   let parts=if crate::bindings::keyboard_prompts()&&list.key_bindings[1]&255!=0{key_parts(list.key_bindings[1])}else{chord_parts(list.pad_bindings[1])};
+   let (top,bottom)=(v.hint[1],v.hint[3]);let h=if bottom>top{bottom-top}else{40.*s};
+   let icon=32.*s;let gap=6.*s;let size=24.*s;
+   let text=px.measure(size,label);
+   let drawn=v.hint[2]>v.hint[0];
+   let used=px.parts(&parts,v.hint[0],top+(h-icon)*0.5,icon,drawn);
+   if drawn{px.box_text(v.hint[0]+used+gap,top,text+2.,h,size,WHITE,label,false);}
+   width=used+gap+text+2.;
+  }
+ }
+ crate::sksim::request(width,modal);
+ true
+}
+/// Mouse targets of our window, recorded while drawing and used next frame.
+#[derive(Clone,Copy,Debug,PartialEq)]
+enum Hit{Slot(usize),Tab(usize),Material(usize),Aggregate(usize),Yes(bool),Criterion(usize),Category(usize),Event(u32),Detail(u8)}
+static mut HITS:Vec<(f32,f32,f32,f32,Hit)>=Vec::new();
+/// The control under the pointer, as of this frame's input.
+static mut HOVER:Option<Hit>=None;
+/// Skill-Simulator's hover gold.
+const HOVER_GOLD:u32=0xff6ce6f8;
+/// Controls that show a gold outline under the pointer; rows move the cursor instead.
+fn outlined(hit:Hit)->bool{matches!(hit,Hit::Tab(_)|Hit::Event(_)|Hit::Detail(_))}
+/// The list canvas transform the targets were recorded with.
+static mut HIT_VIEW:(f32,f32,f32)=(0.,0.,1.);
+fn clear_hits(){unsafe{(*core::ptr::addr_of_mut!(HITS)).clear();}}
+/// Pointer input on our open window (Recomp): hovering moves the cursor, a
+/// left click selects and confirms, a right click goes back and the wheel
+/// turns pages. Clicks become the same events as buttons.
+fn mouse_events()->u32{
+ let Some(m)=crate::kbm::mouse() else{unsafe{*core::ptr::addr_of_mut!(HOVER)=None;}return 0};
+ let (ox,oy,scale)=unsafe{*core::ptr::addr_of!(HIT_VIEW)};
+ let (sx,sy)=screen_mouse(m.x,m.y);let (x,y)=((sx-ox)/scale,(sy-oy)/scale);
+ let mut e=0;if m.right{e|=c::BACK;}if m.wheel>0{e|=c::PREV;}if m.wheel<0{e|=c::NEXT;}
+ let hit=unsafe{(*core::ptr::addr_of!(HITS)).iter().rev().find(|(hx,hy,hw,hh,_)|x>=*hx&&x<hx+hw&&y>=*hy&&y<hy+hh).map(|h|h.4)};
+ // Entering a control sounds like a cursor move.
+ let hover=hit.filter(|h|outlined(*h));
+ if unsafe{core::ptr::addr_of_mut!(HOVER).replace(hover)}!=hover&&hover.is_some(){sound::cue(Cue::Cursor);}
+ let Some(hit)=hit else{return e};
+ if !m.moved&&!m.left{return e}
+ STATE.with(|s|{
+  let mut cursor=false;
+  match hit{
+   Hit::Slot(i)=>{if m.left{if s.focus.material{s.focus.back();}s.selected=i;e|=c::ACCEPT;}else if !s.focus.material&&s.selected!=i{s.selected=i;cursor=true;}}
+   Hit::Tab(t)=>{if m.left&&s.mode==2&&s.tab!=t{e|=c::TAB;}}
+   Hit::Material(i)=>{
+    let count=s.list.slots[s.selected].map_or(0,|e|e.recipe.totals().len());
+    if m.left&&!s.focus.material&&s.mode==2{s.focus.enter(count);if s.focus.material{s.focus.index=i;sound::cue(Cue::Inspect);}}
+    else if s.focus.material&&s.focus.index!=i{s.focus.index=i;cursor=true;}
+   }
+   Hit::Aggregate(i)=>{if s.aggregate.material!=i{s.aggregate.material=i;cursor=true;}}
+   Hit::Yes(yes)=>{if s.focus.yes!=yes{s.focus.yes=yes;cursor=true;}if m.left{e|=c::ACCEPT;}}
+   Hit::Criterion(i)=>{if let Some(d)=s.sort.as_mut(){if !d.secondary{if d.criterion!=i{d.criterion=i;d.message=0;cursor=true;}if m.left{e|=c::ACCEPT;}}}}
+   Hit::Category(i)=>{if let Some(d)=s.sort.as_mut(){if d.secondary{if d.category!=i{d.category=i;d.message=0;cursor=true;}if m.left{e|=c::ACCEPT;}}}}
+   Hit::Event(event)=>{if m.left{e|=event;}}
+   // Either detail page icon turns the page; each gets its own outline.
+   Hit::Detail(_)=>{if m.left{e|=c::DETAIL;}}
+  }
+  if cursor{sound::cue(Cue::Cursor);}
+ });
+ e
+}
+/// A transparent full-screen window while ours is open: clicks never reach
+/// the game's menus or other ImGui windows behind it.
+fn mouse_shield(){
+ use forge::sys::imgui::{ImGuiCond,ImGuiWindowFlags as F};
+ let io=imgui::get_io();
+ imgui::set_next_window_pos(ImVec2{x:0.,y:0.},ImGuiCond::Always,ImVec2{x:0.,y:0.});
+ imgui::set_next_window_size(ImVec2{x:io.DisplaySize.x,y:io.DisplaySize.y},ImGuiCond::Always);
+ imgui::begin(c"##wishlist-mouse-shield",None,F::NoTitleBar|F::NoResize|F::NoMove|F::NoSavedSettings|F::NoScrollbar|F::NoScrollWithMouse|F::NoBackground|F::NoNav|F::NoFocusOnAppearing|F::NoBringToFrontOnFocus);
+ imgui::end();
+}
 pub fn render(){
  crate::skill_view::begin_frame();
  crate::button_prompts::refresh(imgui::get_io().DeltaTime);
+ crate::kbm::poll(crate::bindings::pad_pressed());
  let menu=forge::graphics::Graphics::is_menu_visible();let capturing=crate::bindings::capturing();
  let pad_allowed=crate::bindings::pad_shortcuts_allowed();
  let keys=crate::bindings::keyboard_events(menu||capturing);
  if capturing{STATE.with(|s|s.events=0);crate::bindings::capture_overlay(crate::bindings::language(STATE.with(|s|s.list.language)));return}
  if menu{STATE.with(|s|s.events=0);return}
  if !STATE.with(|s|s.installed&&s.loaded&&s.game_ready){return}
- let pending=STATE.with(|s|core::mem::take(&mut s.events));let pad=if pad_allowed{pending}else{0};let mut e=(if STATE.with(|s|s.mode==0){keys}else{keyboard()})|(pad&!(c::PAD_REGISTER|c::PAD_LIST));
- if pad&c::PAD_REGISTER!=0{e|=c::OPEN_REGISTER}if pad&c::PAD_LIST!=0{e|=c::OPEN_LIST}events(e);
+ let pending=STATE.with(|s|core::mem::take(&mut s.events));
+ // The keyboard guard holds back pad shortcuts only: window actions may come
+ // from keys that Recomp maps onto menu actions.
+ let pad=if pad_allowed{pending}else{pending&!(c::PAD_REGISTER|c::PAD_LIST)};
+ let closed=STATE.with(|s|s.mode==0);
+ let mut e=(if closed{keys}else{keyboard()|mouse_events()})|(pad&!(c::PAD_REGISTER|c::PAD_LIST|c::MENU_OPEN));
+ // While Skill-Simulator's window is open our register shortcut acts on its
+ // cursor, and the list shortcut does nothing.
+ let sim=crate::sksim::frame();crate::game_menu::set_other_open(sim.is_some());
+ let engaged=guest_frame(if closed{sim}else{None},e&c::OPEN_REGISTER!=0,pad_allowed);
+ if engaged{e&=!(c::OPEN_REGISTER|c::OPEN_LIST);}else{if pad&c::PAD_REGISTER!=0{e|=c::OPEN_REGISTER}if pad&c::PAD_LIST!=0{e|=c::OPEN_LIST}
+  // The menu entry is a decision, not a pad shortcut: no keyboard guard.
+  if pending&c::MENU_OPEN!=0{
+   // In the 'Mods' panel: open the chosen mod. On the Hunter's Notes row: one
+   // participant opens directly, more open the game's own third panel.
+   let target=crate::game_menu::panel_choice().or_else(||match crate::mod_menu_model::pick(&crate::mod_menu::entries()){
+    Some(crate::mod_menu_model::Pick::Open(a))=>Some(a),
+    Some(crate::mod_menu_model::Pick::List)=>{crate::game_menu::request_mods_panel();None}
+    None=>None,
+   });
+   if let Some(a)=target{if crate::mod_menu::is_ours(a){e|=c::OPEN_LIST}else{crate::mod_menu::request(a);}}
+  }
+  // Another mod hosting the shared entry asked us to open.
+  if crate::mod_menu::take_request(){e|=c::OPEN_LIST}}
+ events(e);
+ let open=STATE.with(|s|s.mode!=0);crate::kbm::set_free(open);if !open{crate::game_menu::set_help(None);}if open&&crate::button_prompts::is_recomp(){mouse_shield();}
+ if !open{clear_hits();unsafe{*core::ptr::addr_of_mut!(HOVER)=None;}}
  if !STATE.with(|s|s.mode!=0||s.at_smithy()||crate::game_menu::visible(s.base)||!s.notices.is_empty()||crate::native_badges::available()){return}
  // Cache one valid draw list for the frame; never pass a null list to cimgui.
  let Some(cv)=Canvas::new() else{return};
+ unsafe{*core::ptr::addr_of_mut!(HIT_VIEW)=(cv.ox,cv.oy,cv.scale);}clear_hits();
  STATE.with(|s|{
   if !s.installed||!s.loaded||!s.game_ready{return}crate::icons::set_layout(s.list.layout);let lang=s.list.language;
   if s.mode==0{
    // KatSmithy's material dialog covers the smithy: no pins or bars over it.
-   if !crate::katsmithy::tree_dialog(s.base)&&let Some(view)=crate::hud_layout::right_top(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,crate::hud_layout::current(s.base)){let native_cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw};draw_pins(&native_cv,s);
+   if !engaged&&!crate::katsmithy::tree_dialog(s.base)&&let Some(view)=crate::hud_layout::right_top(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,crate::hud_layout::current(s.base)){let native_cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw};draw_pins(&native_cv,s);
    // KatSmithy's weapon detail panel ends lower; lift both bars clear of its status box there.
    let lift=if crate::katsmithy::weapon_view(s.base).is_some(){36.}else{0.};
-   if s.at_smithy()||crate::game_menu::visible(s.base){let y=if crate::game_menu::visible(s.base){398.}else{496.-lift};native_cv.shortcut_bar(1102.,y,s.list.pad_bindings[0],l::TITLE[lang]);}if let Some(r)=s.active(){let registered=s.list.registered(r).is_some();native_cv.shortcut_bar(1102.,528.-lift,s.list.pad_bindings[1],if registered{l::QUICK_REMOVE[lang]}else{l::REGISTER[lang]});}}
+   // The game menu has our Hunter's Notes entry: its list bar is not needed there.
+   if s.at_smithy()||(crate::game_menu::visible(s.base)&&!crate::game_menu::entry()){let y=if crate::game_menu::visible(s.base){398.}else{496.-lift};native_cv.shortcut_bar(1102.,y,s.list.pad_bindings[0],s.list.key_bindings[0],l::TITLE[lang]);}if let Some(r)=s.active(){let registered=s.list.registered(r).is_some();native_cv.shortcut_bar(1102.,528.-lift,s.list.pad_bindings[1],s.list.key_bindings[1],if registered{l::QUICK_REMOVE[lang]}else{l::REGISTER[lang]});}}
 
 
    for (slot,n) in s.notices.visible(){draw_notice(&cv,n.recipe,n.progress,lang,crate::presentation::NOTICE_DURATION-n.seconds,slot);}
@@ -489,37 +854,49 @@ pub fn render(){
   if s.mode==8{if let Some(view)=crate::hud_layout::right_top(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,crate::hud_layout::current(s.base)){draw_pins(&Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw},s);}confirmation(&cv,s);return}
   if s.mode==7{draw_notice_demo(&cv,s);return}
   if s.preview&&s.mode==6{if let Some(r)=s.frozen{draw_notice(&cv,r,None,lang,s.preview_clock,0);}s.preview_clock+=imgui::get_io().DeltaTime.clamp(0.,0.1);if s.preview_clock>crate::presentation::NOTICE_DURATION+0.6{s.preview_clock=0.;}cv.text(350.,40.,600.,18.,GOLD,&format!("{}    L / R  {}/8   B / Esc",l::PREVIEW[lang],s.preview_panel+1));return}
-  let registering=matches!(s.mode,1|3|5);cv.frame(128.,69.,820.,551.);crate::skill_view::open();
+  let registering=matches!(s.mode,1|3|5);cv.frame(128.,52.,820.,546.);crate::skill_view::open();
   cv.heading(146.,82.,782.,if registering{l::REGISTER_TITLE[lang]}else{l::TITLE[lang]});
   if s.preview{cv.text(350.,35.,600.,17.,GOLD,&format!("{}    L / R  {}/8   B / Esc",l::PREVIEW[lang],s.preview_panel+1));}
   if registering{cv.section(146.,123.,320.,l::TARGET[lang]);cv.rect(146.,154.,320.,43.,INSET);cv.icon_plate(154.,160.,31.);if let Some(r)=s.frozen{cv.gear(r,156.,162.,27.);cv.box_text(197.,154.,258.,43.,BODY,WHITE,&name(r,lang),false);}}
   else{
-   for (tab,x,w,label) in [(0,185.,341.,l::LIST[lang]),(1,531.,358.,l::TOTAL[lang])]{cv.rect(x,126.,w,35.,if s.tab==tab{0xff2e302d}else{INSET});cv.rect(x,159.,w,2.,if s.tab==tab{GOLD}else{RULE});cv.box_text(x+8.,126.,w-16.,33.,24.,if s.tab==tab{GOLD}else{MUTED},label,true);}
-   cv.icon(crate::icons::L,148.,130.,28.,WHITE);cv.icon(crate::icons::R,897.,130.,28.,WHITE);
+   for (tab,x,w,label) in [(0,185.,341.,l::LIST[lang]),(1,531.,358.,l::TOTAL[lang])]{cv.hit(x,126.,w,35.,Hit::Tab(tab));let here=s.tab==tab;let hover=unsafe{*core::ptr::addr_of!(HOVER)}==Some(Hit::Tab(tab));if here{cv.draw.add_rect_filled(cv.p(x,128.),cv.p(x+w,158.),GOLD,6.*cv.scale);}cv.rect(x,159.,w,1.,RULE);cv.box_text(x+8.,126.,w-16.,33.,24.,if here{0xff26221b}else if hover{WHITE}else{MUTED},label,true);}
+   cv.hit(144.,126.,36.,36.,Hit::Event(c::TAB_PREV));cv.hit(893.,126.,36.,36.,Hit::Event(c::TAB_NEXT));cv.icon(crate::icons::L,148.,130.,28.,WHITE);cv.icon(crate::icons::R,897.,130.,28.,WHITE);
   }
   let selected=selected_recipe(s);
   if s.tab==0{
-   cv.section(146.,198.,320.,l::TITLE[lang]);let start=s.selected/8*8;
-   for i in start..start+8{let y=230.+(i-start) as f32*42.;let focus=i==s.selected;
-    cv.selection(146.,y,320.,38.,focus&&!s.focus.material,i%2==1);
+   // The registration screen has the target box above: its list starts lower.
+   let (list_top,row0,step,pager_y)=if registering{(205.,236.,40.,560.)}else{(168.,200.,42.,550.)};
+   cv.section(146.,list_top,320.,l::TITLE[lang]);let start=s.selected/8*8;
+   for i in start..start+8{let y=row0+(i-start) as f32*step;let focus=i==s.selected;
+    cv.selection(146.,y,320.,38.,focus&&!s.focus.material,i%2==1);cv.hit(146.,y,320.,38.,Hit::Slot(i));
     if let Some(r)=if focus{selected}else{s.list.slots[i].map(|e|e.recipe)}{let color=if !s.stock_ready{WHITE}else if s.material_cache.ready(i,r).unwrap_or_else(||r.ready(&s.stock,g::PROVISIONS)){GREEN}else{RED};cv.icon_plate(154.,y+4.,30.);cv.gear(r,157.,y+7.,24.);cv.box_text(196.,y,260.,38.,BODY,color,&name(r,lang),false);}else{cv.box_text(159.,y,296.,38.,BODY,MUTED,l::EMPTY[lang],false);}
    }
-   cv.pager(306.,580.,s.selected/8+1,6);
-   cv.line(482.,172.,482.,605.,RULE);
+   cv.pager(306.,pager_y,s.selected/8+1,6);
+   cv.line(482.,172.,482.,588.,RULE);
    if let Some(r)=selected{materials(&cv,s,r,501.,168.,426.);let amount=if s.preview&&s.preview_panel==1{crate::equipment::cost(r)}else{let saved=s.list.costs[s.selected];if saved>0{saved}else{crate::equipment::cost(r)}};cv.rect(501.,422.,426.,35.,INSET);cv.rect(501.,422.,3.,35.,GOLD);cv.box_text(514.,422.,265.,35.,23.,GOLD,l::COST[lang],false);let price=if amount>0{format!("{} z",amount)}else{"—".into()};let pw=cv.measure(26.,&price).min(140.);cv.box_text(915.-pw,422.,pw,35.,26.,GOLD,&price,false);}
    else if registering{action_a(&cv,lang);}
   }
   if s.tab==1{aggregate(&cv,s);}else{details(&cv,s,selected);}
-  cv.frame(18.,632.,600.,75.);let status=match s.status{2=>l::DUPLICATE[lang],3=>l::SAVE_FAILED[lang],_=>if registering{l::PICK[lang]}else if s.tab==0{if s.focus.material{l::INSPECT_ENTRY[lang]}else{l::PICK_ENTRY[lang]}}else{l::SHARED[lang]}};
-  if registering&&selected.is_some()&&s.status<2{cv.fit(34.,637.,568.,BODY,WHITE,l::PICK[lang]);cv.fit(34.,668.,568.,23.,0xff35a5ff,l::REGISTERED_SLOT[lang]);}
-  else{cv.paragraph(34.,640.,568.,61.,BODY,WHITE,status);}
-  // Dedicated black prompt bars sit left of the game's native right-hand prompts.
-  if registering{cv.bar(925.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(925.,676.,160.,crate::icons::B,l::BACK[lang]);}
-  else{if s.tab==0&&!s.focus.material&&s.sort.is_none(){cv.bar(755.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(925.,642.,160.,crate::icons::X,l::DELETE[lang]);if matches!(s.mode,2|4)&&s.list.slots.iter().any(Option::is_some){cv.bar(925.,676.,160.,crate::icons::Y,l::SORT[lang]);}}cv.bar(755.,676.,160.,crate::icons::B,l::BACK[lang]);}
-  if matches!(s.mode,3|4|5){confirmation(&cv,s);}
+  let status=match s.status{2=>l::DUPLICATE[lang],3=>l::SAVE_FAILED[lang],_=>if registering{l::PICK[lang]}else if s.tab==0{if s.focus.material{l::INSPECT_ENTRY[lang]}else{l::PICK_ENTRY[lang]}}else{l::SHARED[lang]}};
+  // The message goes into the game's own help bar (its panel and font); our
+  // own box only when that bar is not available.
+  let message=if registering&&selected.is_some()&&s.status<2{format!("{}\n{}",l::PICK[lang],l::REGISTERED_SLOT[lang])}else{String::from(status)};
+  if crate::game_menu::help_available(){crate::game_menu::set_help(Some(&message));}
+  else{
+   cv.popup(18.,632.,600.,75.);
+   if registering&&selected.is_some()&&s.status<2{cv.fit(34.,637.,568.,BODY,WHITE,l::PICK[lang]);cv.fit(34.,668.,568.,23.,BLUE,l::REGISTERED_SLOT[lang]);}
+   else{cv.paragraph(34.,640.,568.,61.,BODY,WHITE,status);}
+  }
+  // One hint line, left of the game's native right-hand prompts.
+  let mut hints:Vec<(usize,&str)>=Vec::new();
+  if registering{hints.push((crate::icons::A,l::CONFIRM[lang]));}
+  else if s.tab==0&&!s.focus.material&&s.sort.is_none(){hints.push((crate::icons::A,l::CONFIRM[lang]));hints.push((crate::icons::X,l::DELETE[lang]));if matches!(s.mode,2|4|9)&&s.list.slots.iter().any(Option::is_some){hints.push((crate::icons::Y,l::CLEAR_ALL[lang]));hints.push((crate::button_prompts::PAD_EXTRA_TILE+2,l::SORT[lang]));}}
+  hints.push((crate::icons::B,l::BACK[lang]));
+  if s.sort.is_none(){cv.hints(&hints);}
+  if matches!(s.mode,3|4|5|9){confirmation(&cv,s);}
   // A modal covers the detail page: no skill panel over it.
-  if matches!(s.mode,3|4|5)||s.sort.is_some(){crate::skill_view::hide();}
-  if s.sort.is_some(){sort_dialog(&cv,s);cv.bar(755.,642.,160.,crate::icons::A,l::CONFIRM[lang]);cv.bar(755.,676.,160.,crate::icons::B,l::BACK[lang]);}
+  if matches!(s.mode,3|4|5|9)||s.sort.is_some(){crate::skill_view::hide();}
+  if s.sort.is_some(){sort_dialog(&cv,s);cv.hints(&[(crate::icons::A,l::CONFIRM[lang]),(crate::icons::B,l::BACK[lang])]);}
 
  });
  // After the whole window: a linked panel lands on the same foreground list, above it.

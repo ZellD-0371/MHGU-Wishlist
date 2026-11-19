@@ -17,6 +17,31 @@ pub fn right_top(width:f32,height:f32,hud:Option<HudSize>)->Option<crate::presen
  if width/height>=16./9.-0.01{Some(crate::presentation::Viewport{scale,ox:(width-1280.*scale)*0.5,oy:(height-720.*scale)*0.5})}
  else{Some(crate::presentation::Viewport{scale:width/1280.,ox:0.,oy:(height-height.min(width/1.6))*0.5})}
 }
+/// Our windows' viewport: the 1280x720 canvas fitted into the game's picture
+/// (the render aspect may differ from the host window, e.g. 16:10 forced in
+/// a 16:9 window), at the user's UI scale. Without renderer data: the window.
+pub fn picture(width:f32,height:f32,percent:u16,hud:Option<HudSize>)->Option<crate::presentation::Viewport>{
+ crate::presentation::viewport(width,height,100)?;
+ let (pw,ph)=match hud{
+  Some(HudSize{render_width:rw,render_height:rh,..}) if (64..=16384).contains(&rw)&&(64..=16384).contains(&rh)=>{let aspect=rw as f32/rh as f32;let ph=height.min(width/aspect);(ph*aspect,ph)}
+  _=>(width,height),
+ };
+ let scale=(pw/1280.).min(ph/720.)*percent.clamp(50,100) as f32/100.;
+ Some(crate::presentation::Viewport{scale,ox:(width-1280.*scale)*0.5,oy:(height-720.*scale)*0.5})
+}
+/// A Recomp mouse position (console pixels, 1280x720) in display pixels.
+/// Recomp maps the pointer over the game's picture, not the host window, and
+/// its x over the HUD's width only when the HUD is narrower than the picture
+/// (16:9 HUD on 21:9). Same mapping as Skill-Simulator's picture.rs Area::mouse.
+pub fn mouse(x:f32,y:f32,width:f32,height:f32,hud:Option<HudSize>)->(f32,f32){
+ let whole=(x*width/1280.,y*height/720.);
+ let Some(HudSize{render_width:rw,render_height:rh,ui_width:uw})=hud else{return whole};
+ if !(64..=16384).contains(&rw)||!(64..=16384).contains(&rh){return whole}
+ let aspect=rw as f32/rh as f32;let ph=height.min(width/aspect);let pw=ph*aspect;
+ let span=uw as f32/720.;let canvas=if (1280..=16384).contains(&uw)&&span<aspect{span/aspect}else{1.};
+ let u=x/1280.*canvas+(1.-canvas)*0.5;
+ ((width-pw)*0.5+u*pw,(height-ph)*0.5+y/720.*ph)
+}
 #[cfg(target_arch="arm")]
 pub fn current(base:u32)->Option<HudSize>{
  if !crate::native::valid(base)||base.checked_add(0x212699c).is_none(){return None}
