@@ -117,3 +117,7 @@ Use `tools/render_ui_capture.py` for offline UI layout checks. It requires the a
 `src`, `.cargo`, `link`, `conf`, `assets`, and `tools` contain the files needed to build and validate the source. Keep `Cargo.lock` and the generated Rust data files, as they are also required build inputs.
 
 Build outputs, release ZIP archives, local test game files and saves, logs, browser profiles, and preview caches are excluded by `.gitignore`. `Run-Test.cmd` is specific to the separate test environment in this workspace and is not required to install the release.
+
+## License
+
+MIT License. See `LICENSE`, and `THIRD_PARTY_NOTICES.md` for third-party components and game data.

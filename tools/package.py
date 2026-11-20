@@ -10,10 +10,12 @@ files={
  'romfs/nativeNX/plugins/wishlist/wishlist-atlas.rgba':ROOT/('assets/low-memory/wishlist-atlas.rgba' if args.low_memory else 'assets/hd/wishlist-atlas.rgba'),
  'romfs/nativeNX/plugins/wishlist/NOTO_LICENSE.txt':ROOT/'assets/NOTO_LICENSE.txt',
  'romfs/nativeNX/plugins/wishlist/LICENSE.txt':ROOT/'LICENSE',
+ 'romfs/nativeNX/plugins/wishlist/THIRD_PARTY_NOTICES.md':ROOT/'THIRD_PARTY_NOTICES.md',
+ 'romfs/nativeNX/plugins/wishlist/FORGE_LICENSE.txt':ROOT/'assets/FORGE_LICENSE.txt',
 }
 resource_manifest=json.loads((ROOT/'assets/languages/manifest.json').read_text())
 for name in resource_manifest['files']:files['romfs/nativeNX/plugins/wishlist/languages/'+name]=ROOT/'assets/languages'/name
-assert len(files)==23,'Expected 19 language resources and 4 common files'
+assert len(files)==25,'Expected 19 language resources and 6 common files'
 # Match the runtime's actual pre-load check, including BSS and next-module alignment.
 import struct
 nro=(ROOT/'wishlist.nro').read_bytes();required=len(nro)+struct.unpack_from('<I',nro,0x38)[0]+0x10000
