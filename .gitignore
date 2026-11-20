@@ -10,7 +10,9 @@
 /cache/
 /design/previews/
 /Run-Test.cmd
-/docs/
+/docs/*
+!/docs/screenshots/
+!/docs/screenshots.md
 *.log
 *.dmp
 *.stackdump
