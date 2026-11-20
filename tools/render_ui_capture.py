@@ -101,7 +101,7 @@ fn main(){
  if screen=="long-equipment"{let r=*g::RECIPES.iter().max_by(|a,b|imgui::calc_text_size(&name(**a,lang),false,0.).x.total_cmp(&imgui::calc_text_size(&name(**b,lang),false,0.).x)).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});}
  if screen=="long-material"{let r=*g::RECIPES.iter().max_by(|a,b|{let widest=|r:&Recipe|r.totals().iter().map(|m|imgui::calc_text_size(&item(m.id,lang),false,0.).x as u32).max().unwrap_or(0);widest(a).cmp(&widest(b))}).unwrap();s.list.slots.fill(None);s.list.slots[0]=Some(model::Entry{recipe:r,ready:None});s.focus.material=true;}
  STORE.with(|v|*v.borrow_mut()=Some(s));unsafe{FONT=Some(imgui::ImFont)}
- if screen=="prompts"{let cv=Canvas::new().unwrap();cv.bar(1102.,528.,160.,icons::R3,l::QUICK_REMOVE[lang]);cv.bar(1102.,564.,160.,icons::R3,l::REGISTER[lang]);return}
+ if screen=="prompts"{let cv=Canvas::new().unwrap();cv.shortcut_bar(1102.,528.,32,0,l::QUICK_REMOVE[lang]);cv.shortcut_bar(1102.,564.,32,0,l::REGISTER[lang]);return}
  render();
 }
 '''
@@ -208,7 +208,7 @@ for lang in range(9):
     if screen=='materials-long' and lang==0 and x==188 and text=='Gore Magala Feeler+':
      assert abs((ink_center-217)/40-round((ink_center-217)/40))<.01,'Long material left its row centre'
      centred+=1;long_checked=True
-    if screen=='prompts' and lang==0 and text=='Remove':
+    if screen=='prompts' and lang==0 and text=='Remove from Wishlist':
      assert size>=23 and abs(ink_center-542)<.6,'Removal prompt is small or not centred'
      centred+=1;prompt_checked=True
     if screen=='register' and text==labels['REGISTER_ACTION'][lang]:

@@ -55,12 +55,15 @@ mods/
 
 ### Opening the Wishlist
 
-At the Smithy, hold L3 and press R3 or backtick key (to the left of the number 1 key) to open the wishlist. In villages and quest areas, the same shortcut is available while the in-game menu opened with the + button is displayed. 
+At the Smithy, hold L3 and press R3, or press the backtick key  (located to the left of the 1 key) to open your Wishlist.
+
+In the village, during quests, or out in the field, open the Game Menu, select Hunter's Notes, and choose Wishlist at the bottom.
 
 | Input — Nintendo layout | Action |
 | --- | --- |
 | R3 | Register the selected equipment / removal of an existing entry |
-| L3 + R3 <!-- Or the backtick key (`), which is temporarily disabled. --> at the Smithy or in the in-game menu | Open the wishlist |
+| L3 + R3 or backtick key at the Smithy | Open the wishlist |
+| Game Menu → Hunter's Notes → Wishlist (Village, Quests, Field) | Open Wishlist |
 
 Changing the button layout changes the displayed icons. Wishlist shortcuts can be customized independently under Key bindings; The wishlist cannot be opened on the title or character selection screen.
 

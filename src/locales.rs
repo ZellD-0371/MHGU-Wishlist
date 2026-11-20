@@ -3,7 +3,7 @@ pub const LANGUAGES:[&str;9]=["English","简体中文","繁體中文","日本語
 // Every UI string has exactly nine entries in the requested stable language order.
 pub type Label=[&'static str;9];
 pub const TITLE:Label=["Wishlist","愿望清单","願望清單","ウィッシュリスト","찜 목록","Wunschliste","Liste de souhaits","Lista desideri","Lista de deseos"];
-pub const REGISTER:Label=["Add","加入收藏","加入收藏","登録","찜 등록","Eintragen","Ajouter","Aggiungi","Añadir"];
+pub const REGISTER:Label=["Add to Wishlist","加入愿望清单","加入願望清單","ウィッシュリストに登録","찜 등록","Zur Wunschliste","Ajouter à la liste de souhaits","Aggiungi alla lista desideri","Añadir a la lista de deseos"];
 pub const REGISTER_ACTION:Label=["Add to wishlist","加入愿望清单","加入願望清單","ウィッシュリストに登録","찜 목록에 등록","Zur Wunschliste hinzufügen","Ajouter à la liste de souhaits","Aggiungi alla lista desideri","Añadir a la lista de deseos"];
 pub const REGISTERED_SLOT:Label=["(Already registered)","（已登记）","（已登錄）","（登録済みです）","(이미 등록되어 있습니다)","(Bereits eingetragen)","(Déjà enregistré)","(Già registrato)","(Ya registrado)"];
 pub const NOTICE_TEST:Label=["Notification test","通知测试","通知測試","通知テスト","소재 충족 알림 테스트","Benachrichtigungstest","Test des notifications","Test notifiche","Prueba de notificaciones"];
@@ -69,7 +69,7 @@ pub const PICK_ENTRY:Label=["Select the registered entry to view.","请选择要
 pub const INSPECT_ENTRY:Label=["View the registered contents.","查看登记内容。","查看登錄內容。","登録内容を確認します。","등록 내용을 확인합니다.","Registrierten Eintrag ansehen.","Consultez le contenu enregistré.","Visualizza il contenuto registrato.","Consulta el contenido registrado."];
 
 
-pub const QUICK_REMOVE:Label=["Remove","取消收藏","取消收藏","登録解除","찜 삭제","Entfernen","Retirer","Rimuovi","Quitar"];
+pub const QUICK_REMOVE:Label=["Remove from Wishlist","移出愿望清单","移出願望清單","ウィッシュリストから外す","찜 삭제","Von der Wunschliste","Retirer de la liste de souhaits","Togli dalla lista desideri","Quitar de la lista de deseos"];
 
 // Preference controls are distinct from automatic wishlist-entry persistence.
 pub const SETTINGS_DEFAULTS:Label=["Defaults","默认值","預設值","初期設定","기본값","Standardwerte","Valeurs par défaut","Predefiniti","Predeterminados"];
@@ -104,7 +104,7 @@ pub const LANGUAGE_FAILED:Label=["Language resources could not be loaded. The pr
 
 pub const ENABLE_LOGGING:Label=["Enable logging","启用日志记录","啟用日誌記錄","ログ記録を有効にする","로그 기록 활성화","Protokollierung aktivieren","Activer la journalisation","Abilita registrazione log","Activar registro de diagnóstico"];
 // Skill-Simulator guest link: hint labels and dialog text ("{}" is a count).
-pub const SET_REGISTER:Label=["Add set","整套加入","整套加入","セットを登録","찜 세트 등록","Set eintragen","Ajouter l'ensemble","Aggiungi set","Añadir conjunto"];
+pub const SET_REGISTER:Label=["Add Set to Wishlist","整套加入愿望清单","整套加入願望清單","セットをウィッシュリストに登録","찜 세트 등록","Set zur Wunschliste","Ensemble à la liste de souhaits","Set alla lista desideri","Conjunto a la lista de deseos"];
 pub const SET_QUESTION:Label=["Add {} armor pieces to the wishlist.\nContinue?","将{}件防具加入愿望清单。\n是否继续？","將{}件防具加入願望清單。\n是否繼續？","防具{}部位をウィッシュリストに登録します。\nよろしいですか？","방어구 {}부위를 찜 목록에 등록합니다.\n그렇게 하시겠습니까?","{} Rüstungsteile zur Wunschliste hinzufügen.\nFortfahren?","Ajouter {} pièces d'armure à la liste.\nContinuer ?","Aggiungere {} pezzi d'armatura alla lista.\nContinuare?","Se añadirán {} piezas de armadura.\n¿Continuar?"];
 pub const PART_QUESTION:Label=["Add this armor piece to the wishlist.\nContinue?","将此防具加入愿望清单。\n是否继续？","將此防具加入願望清單。\n是否繼續？","この防具をウィッシュリストに登録します。\nよろしいですか？","이 방어구를 찜 목록에 등록합니다.\n그렇게 하시겠습니까?","Dieses Rüstungsteil zur Wunschliste hinzufügen.\nFortfahren?","Ajouter cette pièce d'armure à la liste.\nContinuer ?","Aggiungere questo pezzo d'armatura alla lista.\nContinuare?","Se añadirá esta pieza de armadura.\n¿Continuar?"];
 pub const SHORT:Label=["The wishlist needs {} more free slots.\nNothing was added.","愿望清单还缺{}个空位。\n未加入任何防具。","願望清單還缺{}個空位。\n未加入任何防具。","ウィッシュリストの空きが{}つ足りません。\n何も登録していません。","찜 목록 자리가 {}칸 부족합니다.\n아무것도 등록하지 않았습니다.","Es fehlen {} freie Plätze.\nNichts wurde eingetragen.","Il manque {} emplacements libres.\nRien n'a été ajouté.","Mancano {} posti liberi.\nNon è stato aggiunto nulla.","Faltan {} espacios libres.\nNo se añadió nada."];

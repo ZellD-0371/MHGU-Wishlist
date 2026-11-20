@@ -144,13 +144,17 @@ impl Canvas{
  fn gear(&self,r:Recipe,x:f32,y:f32,size:f32){self.gear_alpha(r,x,y,size,1.);}
  fn gear_alpha(&self,r:Recipe,x:f32,y:f32,size:f32,alpha:f32){if r.kind==25{let (tile,tint)=crate::icons::material(r.id);self.icon(tile,x,y,size,crate::presentation::alpha(tint,alpha));}else{self.icon(crate::icons::equipment(r.kind),x,y,size,crate::presentation::alpha(crate::equipment::icon_tint(r),alpha));}}
  fn sprite(&self,tile:usize,x:f32,y:f32,w:f32,h:f32,tint:u32,flip:bool){let p=self.p(x,y);crate::icons::draw(self.draw,tile,p.x,p.y,w*self.scale,h*self.scale,tint,flip);}
+ /// A smithy/menu shortcut bar: the game's prompt bar, right edge fixed at
+ /// x+160 and growing left as wide as its label needs (at least 160).
  fn shortcut_bar(&self,x:f32,y:f32,chord:u32,key:u32,label:&str){
-  self.bar(x,y,160.,usize::MAX,"");
   let parts=if crate::bindings::keyboard_prompts()&&key&255!=0{key_parts(key)}else{chord_parts(chord)};
   // Up to 90 units of prompts; more parts shrink together.
   let natural=self.parts(&parts,0.,0.,18.,false);let size=18.*(90./natural.max(1.)).min(1.);
-  let width=self.parts(&parts,x+8.,y+(28.-size)*0.5,size,true);
-  self.box_text(x+width+10.,y,142.-width,28.,24.,WHITE,label,false);
+  let prompts=self.parts(&parts,0.,0.,size,false);
+  let w=(8.+prompts+2.+self.measure(24.,label)+20.).max(160.);let left=x+160.-w;
+  self.bar(left,y,w,usize::MAX,"");
+  let width=self.parts(&parts,left+8.,y+(28.-size)*0.5,size,true);
+  self.box_text(left+width+10.,y,w-width-26.,28.,24.,WHITE,label,false);
  }
  /// The window's button hints as the game's own prompt bars (assign.gui:
  /// black centre, end caps), each as wide as its label, right-aligned left of
