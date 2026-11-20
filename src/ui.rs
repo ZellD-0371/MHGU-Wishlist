@@ -465,7 +465,7 @@ fn selected_recipe(s:&State)->Option<Recipe>{
  else{s.list.slots[s.selected].map(|e|e.recipe)}
 }
 fn details(cv:&Canvas,s:&State,r:Option<Recipe>){
- let lang=s.list.language;cv.frame(964.,52.,296.,568.);
+ let lang=s.list.language;cv.frame(972.,52.,290.,568.);
  cv.heading(984.,82.,266.,l::DETAILS[lang]);
  let Some(r)=r else{cv.box_text(984.,69.,266.,551.,26.,MUTED,l::NO_EQUIPMENT[lang],true);return};
  cv.hit(981.,128.,34.,34.,Hit::Detail(0));cv.hit(1218.,128.,34.,34.,Hit::Detail(1));cv.icon(crate::icons::ZL,985.,132.,26.,WHITE);cv.center(1023.,129.,188.,25.,WHITE,&format!("{} / 2",s.detail_page+1));cv.icon(crate::icons::ZR,1222.,132.,26.,WHITE);
