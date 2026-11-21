@@ -9,7 +9,7 @@ TABLES = ['ITEMDATA', 'ARMORSERIESDATA', 'OTWEAPONDATA', 'OTARMORDATA',
           'WEAPON09MSGDATA', 'WEAPON10MSGDATA', 'WEAPON11MSGDATA', 'WEAPON12MSGDATA',
           'WEAPON13MSGDATA', 'WEAPON14MSGDATA']
 
-def build():
+def build(check=False):
     source = (ROOT / 'src/generated.rs').read_text(encoding='utf-8')
     records = []
     for kind, table in enumerate(TABLES, 1):
@@ -42,8 +42,10 @@ def build():
     data = b'WLTX' + struct.pack('<II', 1, len(records)) + rows + pool
     output = ROOT / 'assets/ui-names.bin'
     if not output.exists() or output.read_bytes() != data:
+        if check: raise SystemExit('Name resources stale: run tools/prepare_names.py')
         output.write_bytes(data)
     print(f'External names: {len(records)} rows, {len(data)} bytes, 9 languages')
 
 if __name__ == '__main__':
-    build()
+    import sys
+    build("--check" in sys.argv)

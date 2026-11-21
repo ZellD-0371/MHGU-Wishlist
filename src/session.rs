@@ -40,7 +40,11 @@ pub fn update()->(Option<usize>,bool){
 }
 #[cfg(not(test))]
 pub fn install(base:u32)->bool{
- for (offset,word) in [(0x3e21b8,0xe92d41f0),(0x3e11a8,0xe92d4800),(0x67b544,0xe92d47f0)]{if unsafe{crate::native::rd(base+offset)}!=word{return false}}
+ // Skill-Simulator hooks the same three functions; on Ryujinx it loads first.
+ for (offset,word) in [(0x3e21b8,0xe92d41f0),(0x3e11a8,0xe92d4800),(0x67b544,0xe92d47f0)]{
+  let site=base+offset;let words=unsafe{[crate::native::rd(site),crate::native::rd(site+4)]};
+  if !crate::hook_guard::entry(words,word,site){forge::log::prelude::error!("[wishlist] character session entry +{:X} rejected ({:08X})",offset,words[0]);return false}
+ }
  forge::install_hook!(base,select_character);forge::install_hook!(base,write_character);forge::install_hook!(base,title_update);true
 }
 

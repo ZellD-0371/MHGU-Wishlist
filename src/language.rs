@@ -20,8 +20,23 @@ fn read(lang:usize,kind:usize)->Result<Vec<u8>,()>{unsafe{
  let mut bytes=vec![0u8;size];let count=sys::igImFileRead(bytes.as_mut_ptr().cast(),1,size as u64,file);sys::igImFileClose(file);
  if count==size as u64{Ok(bytes)}else{crate::diagnostics::event(4,"language short read: language / resource / expected / actual",[lang as u32,kind as u32,size as u32,count as u32]);Err(())}
 }}
-pub fn prepare(lang:usize)->Result<Pack,()>{let names=read(lang,0)?;let file=crate::description_file::File::open(&path(lang,1).ok_or(())?)?;Pack::prepare(lang,names,alloc::boxed::Box::new(file))}
-pub fn commit(pack:Pack){let lang=pack.language;let bytes=pack.bytes();let old=DATA.with(|s|s.commit(pack));drop(old);if crate::diagnostics::enabled(){forge::log::prelude::info!("[wishlist] language {} names/index resident ({} bytes); descriptions on demand, cache <=24 entries / 24 KiB",lang,bytes);}}
+pub(crate) fn verify_description(lang:usize)->Result<(),()>{unsafe{
+ use forge::sys::imgui as sys;
+ let p=path(lang,1).ok_or(())?;let wanted=expected(lang,1).ok_or(())?;
+ let f=sys::igImFileOpen(p.as_ptr(),c"rb".as_ptr());if f.is_null(){return Err(())}
+ let mut valid=sys::igImFileGetSize(f)==wanted.0 as u64;
+ let mut buffer=vec![0u8;65536];let mut remaining=wanted.0;let mut crc=!0;
+ while valid&&remaining>0{let n=remaining.min(buffer.len());if sys::igImFileRead(buffer.as_mut_ptr().cast(),1,n as u64,f)!=n as u64{valid=false;break}crc=crate::language_pack::crc_step(crc,&buffer[..n]);remaining-=n;}
+ sys::igImFileClose(f);
+ if !valid||!crc!=wanted.1{forge::log::prelude::error!("[wishlist] description pack mismatch (lang {}): expected CRC {:08X}, actual {:08X}; update the entire Wishlist folder",lang,wanted.1,!crc);return Err(())}Ok(())
+}}
+pub fn diagnose(){
+ if !crate::diagnostics::enabled(){return}
+ crate::diagnostics::resource_record(format_args!("build v{} resource-id={} active-language={:?}; app:/nativeNX/plugins/wishlist/languages/",option_env!("CARGO_PKG_VERSION").unwrap_or("test"),crate::language_pack::resource_id(),current()));
+ for kind in 0..3{if let Some((bytes,crc))=expected(4,kind){crate::diagnostics::resource_record(format_args!("Korean resource kind={} bytes={} crc32={:08X} (NRO expected identity)",kind,bytes,crc));}}
+}
+pub fn prepare(lang:usize)->Result<Pack,()>{verify_description(lang)?;let names=read(lang,0)?;let file=crate::description_file::File::open(&path(lang,1).ok_or(())?)?;Pack::prepare(lang,names,alloc::boxed::Box::new(file))}
+pub fn commit(pack:Pack){let lang=pack.language;let bytes=pack.bytes();let old=DATA.with(|s|s.commit(pack));drop(old);diagnose();if crate::diagnostics::enabled(){forge::log::prelude::info!("[wishlist] language {} names/index resident ({} bytes); descriptions on demand, cache <=24 entries / 24 KiB",lang,bytes);}}
 
 pub fn font_valid()->bool{unsafe{
  crate::diagnostics::init_status(128,false);

@@ -10,6 +10,7 @@ pub fn crc_step(mut value:u32,data:&[u8])->u32{
 pub fn crc32(data:&[u8])->u32{!crc_step(!0,data)}
 pub fn expected(lang:usize,kind:usize)->Option<(usize,u32)>{manifest::FILES.get(lang)?.get(kind).copied()}
 pub fn matches(lang:usize,kind:usize,data:&[u8])->bool{expected(lang,kind).is_some_and(|(bytes,crc)|bytes==data.len()&&crc32(data)==crc)}
+pub fn resource_id()->&'static str{manifest::RESOURCE_ID}
 /// Read exactly the requested range; implementations own and close their file.
 pub trait Source:Send{fn len(&self)->u64;fn read(&mut self,offset:u64,bytes:&mut[u8])->Result<(),()>;}
 pub const CACHE_ENTRIES:usize=24;

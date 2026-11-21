@@ -6,10 +6,14 @@ try {
  if ($LASTEXITCODE -ne 0) { throw 'LowMemory atlas is stale or invalid' }
  & python tools/prepare_hd_atlas.py --check
  if ($LASTEXITCODE -ne 0) { throw 'HD cropped atlas is stale or invalid' }
- & python tools/prepare_names.py
+ & python tools/sync_korean.py
+ if ($LASTEXITCODE -ne 0) { throw 'Korean canonical inputs are stale' }
+ & python tools/prepare_names.py --check
  if ($LASTEXITCODE -ne 0) { throw 'Name resource generation failed' }
  & python tools/prepare_languages.py --check
  if ($LASTEXITCODE -ne 0) { throw 'Language resources are stale or invalid' }
+ & python tools/check_korean.py
+ if ($LASTEXITCODE -ne 0) { throw 'Korean term/runtime resource checks failed' }
  New-Item -ItemType Directory -Force target/host-check | Out-Null
  & rustc +nightly --edition 2024 --test tools/check_model.rs -Awarnings -o target/host-check/check_model.exe
  if ($LASTEXITCODE -ne 0) { throw 'Could not compile model checks' }

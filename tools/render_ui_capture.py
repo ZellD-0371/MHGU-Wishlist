@@ -27,7 +27,7 @@ canvas=source[source.index('pub(crate) static mut FONT'):source.index('fn save('
 draw=source[source.index('fn materials('):source.index('// Skill-Simulator guest link (render thread only).')]+source[source.index('/// Mouse targets of our window'):source.index('/// Pointer input on our open window')]
 render=source[source.index('pub fn render()'):source.index('pub fn menu()')]
 render='pub fn render(){let cv=Canvas::new().unwrap();let engaged=false;STATE.with(|s|{'+render.split(' STATE.with(|s|{',1)[1]
-modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['button_prompts','sorting','binding_model','text_cache','material_cache','model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications','katsmithy_model','mod_menu_model'])
+modules='\n'.join(f'#[path="{(ROOT/"src"/(n+".rs")).as_posix()}"]mod {n};' for n in ['button_prompts','sorting','binding_model','text_cache','material_cache','model','generated','locales','equipment','interaction','navigation','presentation','text_blob','name_data','hud_layout','notifications','katsmithy_model'])
 stub=r'''
 
 extern crate alloc;extern crate self as forge;
@@ -39,7 +39,7 @@ use sys::imgui::{ImVec2,ImDrawFlags};
 pub mod sys{mod language_ui{pub fn init(){}}
 pub mod imgui{
  #[derive(Clone,Copy,Debug)]pub struct ImVec2{pub x:f32,pub y:f32}
- pub enum ImDrawFlags{None,Closed}
+ pub enum ImDrawFlags{None,Closed,RoundCornersBottom}
  pub struct Baked{size:f32}pub struct Glyph{pub AdvanceX:f32,pub X0:f32,pub X1:f32,pub Y0:f32,pub Y1:f32}
  static BOUNDS:&[u8]=include_bytes!("bounds.bin");static HORIZONTAL:&[u8]=include_bytes!("horizontal.bin");static ADV:&[u8]=include_bytes!("advances.bin");static mut BAKED:Baked=Baked{size:0.};static mut GLYPH:Glyph=Glyph{AdvanceX:0.,X0:0.,X1:0.,Y0:0.,Y1:0.};
  pub unsafe fn ImFont_GetFontBaked(_: *mut u8,size:f32,_:f32)->*mut Baked{unsafe{BAKED.size=size};&raw mut BAKED}
@@ -56,6 +56,7 @@ pub mod imgui{
  impl DrawList{
   pub fn foreground()->Self{Self}pub fn raw(&self)->*mut u8{1 as *mut u8}
   pub fn add_rect_filled(&self,a:ImVec2,b:ImVec2,c:u32,_:f32){println!("[\"rect\",{},{},{},{},{}]",a.x,a.y,b.x,b.y,c)}
+  pub fn add_rect_filled_ex(&self,a:ImVec2,b:ImVec2,c:u32,r:f32,_:ImDrawFlags){self.add_rect_filled(a,b,c,r)}
   pub fn add_circle_filled(&self,p:ImVec2,r:f32,c:u32,_:i32){println!("[\"circle\",{},{},{},{}]",p.x,p.y,r,c)}
   pub fn add_line(&self,a:ImVec2,b:ImVec2,c:u32,t:f32){println!("[\"line\",{},{},{},{},{},{}]",a.x,a.y,b.x,b.y,c,t)}
   pub fn add_rect(&self,a:ImVec2,b:ImVec2,c:u32,_:f32,t:f32,_:ImDrawFlags){println!("[\"outline\",{},{},{},{},{},{}]",a.x,a.y,b.x,b.y,c,t)}
@@ -79,7 +80,7 @@ mod text_data{pub fn init(){}pub fn description(k:u8,id:u16,l:usize)->&'static s
 mod native_badges{pub struct Marker{pub x:f32,pub y:f32}pub fn available()->bool{false}pub fn markers(_: &super::List,_:u32)->Vec<Marker>{vec![]}pub fn markers_with(_: &super::List,_:u32,_:bool)->Vec<Marker>{vec![]}}
 mod katsmithy{#[derive(Clone,Copy)]pub struct ArmorView;#[derive(Clone,Copy)]pub struct WeaponView;pub fn armor_view(_:u32)->Option<ArmorView>{None}pub fn weapon_view(_:u32)->Option<WeaponView>{None}pub fn tree_dialog(_:u32)->bool{false}pub fn transform(w:f32,h:f32)->Option<(f32,f32,f32)>{super::katsmithy_model::transform(w,h)}pub fn armor_pins(_:ArmorView,_:&super::List)->Vec<(f32,f32)>{vec![]}pub fn weapon_pins(_:WeaponView,_:&super::List)->Vec<(f32,f32)>{vec![]}}
 mod skill_view{pub fn show(_:u8,_:u16,_:u8,_:f32,_:f32,_:f32){}pub fn open(){}pub fn hide(){}pub fn overlay(){}pub fn begin_frame(){}}
-mod game_menu{pub fn set_other_open(_:bool){}pub const INDEX:u8=6;pub fn visible(_:u32)->bool{false}pub fn entry()->bool{false}pub fn help_available()->bool{false}pub fn set_help(_:Option<&str>){}}
+mod game_menu{pub fn set_other_open(_:bool){}pub fn visible(_:u32)->bool{false}pub fn entry()->bool{false}pub fn help_available()->bool{false}pub fn set_help(_:Option<&str>){}pub fn keys_hidden()->bool{true}}
 mod sound{pub enum Cue{Open}pub fn cue(_:Cue){}}use sound::Cue;
 mod c{pub const ACCEPT:u32=4;pub const PREV:u32=64;pub const NEXT:u32=128;pub const DETAIL:u32=1024;pub const TAB_PREV:u32=2048;pub const TAB_NEXT:u32=4096;}
 mod bindings{pub fn keyboard_prompts()->bool{false}pub fn key_label(_:u32)->String{String::new()}}
@@ -201,7 +202,7 @@ for lang in range(9):
     for tab,expected_x in [(0,355.5),(1,710.)]:
      if text==tab_labels[tab][lang] and 120<y<160:
       assert abs(ink_x-expected_x)<.6,(screen,lang,text,'horizontal centre')
-      assert abs(ink_center-142.5)<.6,(screen,lang,text,'vertical centre')
+      assert abs(ink_center-140.5)<.6,(screen,lang,text,'vertical centre')
       centred+=1
     if screen=='category' and clips and abs(clips[-1][1]-380.)<.01 and abs(clips[-1][3]-419.)<.01:
      assert abs(ink_center-399.5)<.6,(lang,text,'category material row centre');centred+=1

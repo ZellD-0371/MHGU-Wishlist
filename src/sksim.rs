@@ -60,8 +60,6 @@ pub fn window_rect()->Option<[f32;4]>{
  let r:[f32;4]=core::array::from_fn(|i|f32::from_bits(unsafe{core::ptr::read_volatile((block+24+i as u32*4) as *const u32)}));
  (r.iter().all(|v|v.is_finite())&&r[2]>r[0]&&r[3]>r[1]).then_some(r)
 }
-/// Skill-Simulator is loaded (its block was found).
-pub fn present()->bool{BLOCK.load(Ordering::Acquire)!=0}
 fn read()->Option<View>{
  let block=BLOCK.load(Ordering::Acquire);if block==0{return None}
  let mut bytes=[0u8;SIZE];

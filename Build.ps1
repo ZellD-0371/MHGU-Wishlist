@@ -5,6 +5,8 @@ $taskOldPath = $env:PATH
 $taskOldOffline = $env:CARGO_NET_OFFLINE
 $taskOldLinker = $env:CARGO_TARGET_ARMV7A_NONE_EABI_LINKER
 try {
+    & python './tools/sync_korean.py'
+    if ($LASTEXITCODE -ne 0) { throw 'Korean canonical inputs are stale' }
     & python './tools/prepare_names.py'
     if ($LASTEXITCODE -ne 0) { throw 'Name resource generation failed' }
     & $ResourcePython './tools/prepare_languages.py'
@@ -20,6 +22,10 @@ try {
     $taskCompiler = Get-Command arm-none-eabi-gcc -ErrorAction SilentlyContinue
     if (-not $taskCompiler) { throw 'Install devkitARM and set DEVKITARM, or add arm-none-eabi-gcc to PATH.' }
     $env:CARGO_TARGET_ARMV7A_NONE_EABI_LINKER = $taskCompiler.Source
+    & python './tools/prepare_names.py' --check
+    if ($LASTEXITCODE -ne 0) { throw 'Generated name resources are stale' }
+    & python './tools/prepare_languages.py' --check
+    if ($LASTEXITCODE -ne 0) { throw 'Generated language resources are stale' }
     & cargo +nightly forge build --release
     if ($LASTEXITCODE -ne 0) { throw 'Forge build failed' }
     & (Join-Path $PSScriptRoot 'tools/Check-Instructions.ps1')
@@ -27,13 +33,14 @@ try {
         $taskPython = Get-Command python -ErrorAction SilentlyContinue
         if (-not $taskPython) { $taskPython = Get-Command python3 -ErrorAction SilentlyContinue }
         if (-not $taskPython) { throw 'Python 3 is required for packaging. Use -SkipPackage to build only.' }
-        # Both releases share the NRO. A normal build leaves both ZIPs in dist.
-        if (-not $LowMemory) {
-            & $taskPython.Source './tools/package.py'
-            if ($LASTEXITCODE -ne 0) { throw 'Standard packaging failed' }
+        # The release is the HD package only. -LowMemory also leaves the
+        # half-resolution atlas package in dist for anyone who needs it.
+        & $taskPython.Source './tools/package.py'
+        if ($LASTEXITCODE -ne 0) { throw 'Standard packaging failed' }
+        if ($LowMemory) {
+            & $taskPython.Source './tools/package.py' --low-memory
+            if ($LASTEXITCODE -ne 0) { throw 'LowMemory packaging failed' }
         }
-        & $taskPython.Source './tools/package.py' --low-memory
-        if ($LASTEXITCODE -ne 0) { throw 'LowMemory packaging failed' }
     }
 } finally {
     $env:PATH = $taskOldPath

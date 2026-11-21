@@ -4,9 +4,9 @@ mod name_data;mod language;mod language_pack;mod language_ui;mod description_fil
 mod diagnostics;mod inventory;mod sorting;mod atlas;mod text_cache;mod material_cache;mod font_validation;
 mod binding_model;mod bindings;
 mod hook_guard;mod button_prompts;mod menu_buttons;mod input_chain;mod native_modal;
-mod hud_layout;mod skill_view;mod katsmithy_model;mod katsmithy;mod sksim_model;mod sksim;mod kbm;mod mod_menu_model;mod mod_menu;
+mod hud_layout;mod skill_view;mod katsmithy_model;mod katsmithy;mod sksim_model;mod sksim;mod kbm;
 mod model;#[allow(dead_code)] mod generated; // full extracted tables; only some are read
-mod locales;mod native;mod controller;mod storage;mod ui;mod smithy;mod equipment;mod navigation;mod sound;mod icons;mod interaction;mod session;mod profiles;mod text_blob;mod text_data;mod presentation;mod game_menu;mod sound_cues;mod notifications;mod badge_model;mod native_badges;mod completed;
+mod locales;mod native;mod controller;mod storage;mod ui;mod smithy;mod equipment;mod navigation;mod sound;mod icons;mod interaction;mod session;mod profiles;mod text_blob;mod text_data;mod presentation;mod game_menu;mod purplelib;mod sound_cues;mod notifications;mod badge_model;mod native_badges;mod completed;
 use core::{cell::UnsafeCell,sync::atomic::{AtomicBool,Ordering},ffi::c_void};
 use model::{List,Recipe};
 use forge::log::prelude::{info,error};
@@ -72,11 +72,9 @@ pub extern "C" fn forge_onUpdate(dt:f32){
  // input imports once, then keep its view of ownership current each frame.
  katsmithy::install_once();
  sksim::discover_once();
- mod_menu::discover_once();
- game_menu::refresh();
  game_menu::update_help();
  game_menu::hide_menu(STATE.with(|s|s.mode!=0));
- STATE.with(|s|mod_menu::set_ready(s.installed&&s.input_ready&&s.loaded&&s.game_ready&&s.profile.is_some()));
+ game_menu::hide_keys(STATE.with(|s|s.mode!=0));
  controller::publish_ownership();
  // Some HID imports remain unresolved until a pad style is actually used.
  // Keep input disabled until both the menu hook and at least one import work.
@@ -91,6 +89,7 @@ pub extern "C" fn forge_onUpdate(dt:f32){
   info!("[wishlist-input] input ready changed to {}",now_ready);
  }
  sound::update(base);
+ purplelib::update();
  if !STATE.with(|s|s.settings_loaded){let mut bytes=[0;storage::MAX_BYTES];match storage::WISHLIST.read(&mut bytes){Ok(text)=>match List::decode(text){Ok(list)=>STATE.with(|s|{s.list.copy_preferences(&list);s.settings_loaded=true;}),Err(())=>diagnostics::event(3,"settings INI parse failed",[0,0,0,0])},Err(e)=>diagnostics::event(3,"settings INI read failed (error enum)",[1,e as u32,0,0])}}
  let logging=STATE.with(|s|s.list.diagnostics);diagnostics::set_enabled(logging);diagnostics::tick(dt);
  let (slot,playing)=session::update();

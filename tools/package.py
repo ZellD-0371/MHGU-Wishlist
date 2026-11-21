@@ -5,6 +5,9 @@ ROOT=pathlib.Path(__file__).resolve().parents[1]
 OUT=ROOT/('dist/native-low/Wishlist' if args.low_memory else 'dist/native/Wishlist')
 VERSION=tomllib.loads((ROOT/'Cargo.toml').read_text(encoding='utf-8'))['package']['version']
 ARCHIVE=ROOT/'dist'/(f'Wishlist_LowMemory_v{VERSION}.zip' if args.low_memory else f'Wishlist_v{VERSION}.zip')
+import subprocess,sys
+for script,check_args in [('sync_korean.py',[]),('prepare_names.py',['--check']),('prepare_languages.py',['--check'])]:
+ subprocess.run([sys.executable,str(ROOT/'tools'/script),*check_args],check=True)
 files={
  'romfs/nativeNX/plugins/wishlist.nro':ROOT/'wishlist.nro',
  'romfs/nativeNX/plugins/wishlist/wishlist-atlas.rgba':ROOT/('assets/low-memory/wishlist-atlas.rgba' if args.low_memory else 'assets/hd/wishlist-atlas.rgba'),
@@ -18,7 +21,8 @@ for name in resource_manifest['files']:files['romfs/nativeNX/plugins/wishlist/la
 assert len(files)==25,'Expected 19 language resources and 6 common files'
 # Match the runtime's actual pre-load check, including BSS and next-module alignment.
 import struct
-nro=(ROOT/'wishlist.nro').read_bytes();required=len(nro)+struct.unpack_from('<I',nro,0x38)[0]+0x10000
+nro=(ROOT/'wishlist.nro').read_bytes();assert resource_manifest['inputs_sha256'].encode() in nro,'NRO/resource build identity mismatch: rebuild before packaging'
+required=len(nro)+struct.unpack_from('<I',nro,0x38)[0]+0x10000
 assert required<=0xC00000,f'NRO exceeds Recomp plugin region: {required} > 12582912'
 assert required<=0x300000,f'NRO exceeds 3 MiB compatibility budget: {required}'
 assert all(source.is_file() for source in files.values()),'Missing package input'

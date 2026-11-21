@@ -41,4 +41,13 @@ fn validate(data:&[u8],size:u64,wanted:(usize,u32))->(bool,usize,usize){let mut 
   let size=good.len() as u64+if fault==2{1}else{0};*MOCK.lock().unwrap()=Some(Mock{data,at:0,missing:fault==1,size,short:fault==4,open:0,close:0,reads:0,max_read:0});
   assert_eq!(language::font_valid(),fault==0);let state=MOCK.lock().unwrap();let m=state.as_ref().unwrap();assert_eq!(m.open,m.close);assert!(m.max_read<=65536);if fault==0{assert_eq!(m.reads,good.len().div_ceil(65536));assert_eq!(m.at,good.len());}if fault==1||fault==2{assert_eq!(m.reads,0);}
  }
+ // A same-size stale body can leave the description index unchanged.
+ let text=std::fs::read("assets/languages/text.ko.bin").unwrap();
+ for damaged in [false,true]{
+  let mut data=text.clone();if damaged{*data.last_mut().unwrap()^=1;}
+  *MOCK.lock().unwrap()=Some(Mock{size:data.len() as u64,data,at:0,missing:false,short:false,open:0,close:0,reads:0,max_read:0});
+  assert_eq!(language::verify_description(4).is_ok(),!damaged);
+  let state=MOCK.lock().unwrap();let m=state.as_ref().unwrap();assert_eq!(m.open,m.close);assert!(m.max_read<=65536);
+ }
+
 }

@@ -137,3 +137,4 @@ pub fn selected_registered(list:&List,base:u32)->Option<(u32,Recipe)>{
 }
 
 pub fn smithy_visible(base:u32)->bool{grid_owner(base).is_some()||LISTS.iter().any(|cached|{let owner=cached.load(Ordering::Acquire);visible(owner,base)&&list_parent(owner,base).is_some()})}
+

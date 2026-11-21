@@ -25,12 +25,16 @@ fn write(args:core::fmt::Arguments<'_>){
  }
 }
 
+#[cfg(not(test))]
+pub fn resource_record(args:core::fmt::Arguments<'_>){if enabled(){write(args)}}
+#[cfg(test)]
+pub fn resource_record(_:core::fmt::Arguments<'_>){}
 pub fn tick(dt:f32){if enabled()&&dt.is_finite(){CLOCK.fetch_add((dt.clamp(0.,1.)*1000.) as u32,Ordering::Relaxed);}}
 pub fn set_enabled(on:bool)->bool{
  if ENABLED.swap(on,Ordering::Relaxed)==on{return false}
  for c in &CHANNELS{c.seen.store(false,Ordering::Relaxed);c.suppressed.store(0,Ordering::Relaxed);}
  #[cfg(not(test))]
- if on{write(format_args!("v{} diagnostic logging enabled (diagnostic records are not necessarily errors)",env!("CARGO_PKG_VERSION")));}
+ if on{write(format_args!("v{} diagnostic logging enabled (diagnostic records are not necessarily errors)",env!("CARGO_PKG_VERSION")));crate::language::diagnose();}
  if on{event(15,"initialization bits: native=1, badges=2, completion=4, menu=8, session=16, input=32, atlas=64, font=128; succeeded / failed",[INIT_OK.load(Ordering::Relaxed),INIT_FAILED.load(Ordering::Relaxed),0,0]);}
  true
 }

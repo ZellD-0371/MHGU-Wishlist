@@ -1,6 +1,6 @@
 {
   "format": 2,
-  "inputs_sha256": "be6420c9ce237adae7b753f1636fc89297d31eaeca80bdc4e9ca9404103a30fd",
+  "inputs_sha256": "e51ac8825ac39f6701f9efdfcfd75bd938294563753a146ff95cd77f66add983",
   "codes": [
     "en",
     "zh-Hans",
@@ -46,12 +46,12 @@
       "crc32": 2462736851
     },
     "names.ko.bin": {
-      "bytes": 433134,
-      "crc32": 4053177423
+      "bytes": 435494,
+      "crc32": 27822378
     },
     "text.ko.bin": {
-      "bytes": 1022957,
-      "crc32": 1380360135
+      "bytes": 1026294,
+      "crc32": 2389661310
     },
     "names.de.bin": {
       "bytes": 383006,
@@ -86,8 +86,8 @@
       "crc32": 4084254206
     },
     "font.shared.otf": {
-      "bytes": 2867892,
-      "crc32": 1625602643
+      "bytes": 2869724,
+      "crc32": 2091250551
     }
   },
   "description_indexes": {
@@ -109,7 +109,7 @@
     },
     "ko": {
       "bytes": 100600,
-      "crc32": 2118157134
+      "crc32": 2481394816
     },
     "de": {
       "bytes": 100600,

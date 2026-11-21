@@ -11,7 +11,6 @@ extern crate alloc;
 #[path="../src/session.rs"]mod session;
 #[path="../src/profiles.rs"]mod profiles;
 #[path="../src/sksim_model.rs"]mod sksim_model;
-#[path="../src/mod_menu_model.rs"]mod mod_menu_model;
 use model::*;
 #[path="../src/hook_guard.rs"]mod hook_guard;
 #[test]fn shared_destructor_keeps_existing_forge_hook_chain(){
@@ -22,6 +21,13 @@ use model::*;
  assert!(!hook_guard::matches([0xe51ff004,0x03363d51,original[2],original[3]],original,0x76da30));
  assert!(!hook_guard::matches([0xe51ff004,0x03363d50,0,original[3]],original,0x76da30));
  assert!(!hook_guard::matches([0xe92d4010,0,original[2],original[3]],original,0x76da30));
+ // Ryujinx loads plugins below 0x03200000; their jumps count too.
+ assert!(hook_guard::matches([0xe51ff004,0x00d63d50,original[2],original[3]],original,0x76da30));
+ assert!(!hook_guard::matches([0xe51ff004,0x76da30,original[2],original[3]],original,0x76da30));
+ assert!(hook_guard::entry([0xe92d41f0,0],0xe92d41f0,0x3e21b8));
+ assert!(hook_guard::entry([0xe51ff004,0x00d63d50],0xe92d41f0,0x3e21b8));
+ assert!(!hook_guard::entry([0xe51ff004,0],0xe92d41f0,0x3e21b8));
+ assert!(!hook_guard::entry([0xe92d4ff0,0],0xe92d41f0,0x3e21b8));
 }
 #[test]fn material_focus_preserves_equipment_cursor_and_returns(){
  let mut f=interaction::Focus::default();f.enter(0);assert!(!f.material);

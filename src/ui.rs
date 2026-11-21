@@ -6,7 +6,7 @@ use crate::{STATE,State,model::{Recipe,List},locales as l,generated as g,control
 pub(crate) static mut FONT:Option<imgui::ImFont>=None;
 // MHXX in-game palette, shared with Skill-Simulator (ImGui ABGR).
 const WHITE:u32=0xffe9eceb;const GOLD:u32=0xff6ce6f8;const BLUE:u32=0xffe8c586;const RED:u32=0xff7a8af0;const GREEN:u32=0xff9ad49f;const MUTED:u32=0xffa6a398;
-const PANEL:u32=0xff26221b;const INSET:u32=0xff1c1a16;const RAISED:u32=0xff2d281f;const RULE:u32=0xff4c4636;
+const BACKDROP:u32=0xf01c1a16;const INSET:u32=0xbd26221b;const RAISED:u32=0xff2d281f;const RULE:u32=0xff4c4636;
 const SELECT:u32=0xff403a2c;const BLACK:u32=0xff000000;const TEAL:[u32;4]=[0xff867f2b;4];
 // Window frame: red double lines over a black band, a green-gold line below.
 const RED_TONES:[u32;4]=[0xff35368a,0xff2729a9,0xff2022b6,0xff1c2ea5];const RED_UNDER:[u32;3]=[0xff217485,0xff148964,0xff258a59];
@@ -50,9 +50,12 @@ impl Canvas{
   }}}
  }
  /// A main window: dark panel in the red XX frame.
- fn frame(&self,x:f32,y:f32,w:f32,h:f32){self.rect(x,y,w,h,PANEL);self.border(x,y,w,h,RED_TONES,&RED_UNDER,1.);}
+ /// Window background, as Skill-Simulator's window: plain 0x161A1C at 94% (alpha 240).
+ /// Inner boxes use its panel colour 0x1B2226 at 74%, so they read a step lighter.
+ fn backdrop(&self,x:f32,y:f32,w:f32,h:f32){self.rect(x,y,w,h,BACKDROP);}
+ fn frame(&self,x:f32,y:f32,w:f32,h:f32){self.backdrop(x,y,w,h);self.border(x,y,w,h,RED_TONES,&RED_UNDER,1.);}
  /// A dialog or message box: raised panel in a teal frame.
- fn popup(&self,x:f32,y:f32,w:f32,h:f32){self.rect(x,y,w,h,RAISED);self.border(x,y,w,h,TEAL,&[],1.);}
+ fn popup(&self,x:f32,y:f32,w:f32,h:f32){self.backdrop(x,y,w,h);self.border(x,y,w,h,TEAL,&[],1.);}
  /// The selection cursor: a lit row with gold corner brackets.
  fn cursor(&self,x:f32,y:f32,w:f32,h:f32){
   self.rect(x,y,w,h,SELECT);
@@ -75,7 +78,7 @@ impl Canvas{
  }
  fn selection(&self,x:f32,y:f32,w:f32,h:f32,selected:bool,alternate:bool){
   if selected{self.cursor(x,y,w,h);}
-  else{self.rect(x,y,w,h,if alternate{0xff2a251e}else{0xff2e2921});}
+  else{self.rect(x,y,w,h,if alternate{0xbd2a251e}else{0xbd2e2921});}
  }
  fn icon_plate(&self,x:f32,y:f32,size:f32){self.rect(x,y,size,size,INSET);self.draw.add_rect(self.p(x,y),self.p(x+size,y+size),RULE,1.,self.scale,ImDrawFlags::None);}
  fn text(&self,x:f32,y:f32,width:f32,size:f32,color:u32,text:&str){
@@ -157,16 +160,19 @@ impl Canvas{
   self.box_text(left+width+10.,y,w-width-26.,28.,24.,WHITE,label,false);
  }
  /// The window's button hints as the game's own prompt bars (assign.gui:
- /// black centre, end caps), each as wide as its label, right-aligned left of
- /// the detail panel's right edge, on one row (scaled down only when it
+ /// black centre, end caps), each as wide as its label, right-aligned to the
+ /// detail panel's right edge (left of the game's button column if that stays), on one row (scaled down only when it
  /// would reach the game's help bar on the left).
  fn hints(&self,items:&[(usize,&str)]){
   // Fixed order, left to right: other buttons, then − +, X Y, A B.
   let extra=crate::button_prompts::PAD_EXTRA_TILE;
   let rank=|tile:usize|match tile{t if t==extra+3=>1,t if t==extra+2=>2,crate::icons::X=>3,crate::icons::Y=>4,crate::icons::A=>5,crate::icons::B=>6,_=>0};
   let mut items=items.to_vec();items.sort_by_key(|(tile,_)|rank(*tile));let items=&items[..];
-  // One long bar with every hint inside it.
-  let (gap,pad,right,left,y)=(22.,16.,1262.,612.,662.);
+  // One long bar with every hint inside it, right of the game's help bar (ends at
+  // x 612). The game's own button column (from about x 1106, e.g. the Smithy's sort
+  // prompt) is hidden under our window; if it could not be, the bar stops left of it.
+  let right=if crate::game_menu::keys_hidden(){1262.}else{1098.};
+  let (gap,pad,left,y)=(22.,16.,612.,662.);
   let widths:Vec<f32>=items.iter().map(|(_,label)|18.+5.+self.measure(24.,label)).collect();
   let inner:f32=widths.iter().sum::<f32>()+gap*(items.len().saturating_sub(1)) as f32;
   let k=((right-left-pad*2.)/inner.max(1.)).min(1.);
@@ -229,7 +235,7 @@ impl Canvas{
   self.icon(crate::icons::DPAD_LEFT,left-gap-icon,y,icon,WHITE);
   self.icon(crate::icons::DPAD,left+width+gap,y,icon,WHITE);
  }
- fn slots(&self,x:f32,y:f32,count:i16){for i in 0..3{let px=x+i as f32*25.;if i<count.clamp(0,3){self.sprite(crate::icons::SLOT_RING,px,y,20.,20.,WHITE,false);}else{self.sprite(crate::icons::SLOT_DASH,px,y+8.,20.,6.,WHITE,false);}}}
+ fn slots(&self,x:f32,y:f32,height:f32,count:i16){for i in 0..3{let px=x+i as f32*25.;if i<count.clamp(0,3){self.sprite(crate::icons::SLOT_RING,px,y+(height-20.)*0.5,20.,20.,WHITE,false);}else{self.sprite(crate::icons::SLOT_DASH,px,y+(height-6.)*0.5,20.,6.,WHITE,false);}}}
  fn sharpness(&self,x:f32,y:f32,w:f32,sharp:[u16;7]){
   // Native menu_equipDetail's three slices: 20px hilt, stretch body, 20px tip.
   self.sprite(crate::icons::SHARPNESS_FRAME,x,y,20.,20.,0xff787878,false);
@@ -275,7 +281,7 @@ fn save(next:List)->bool{
 }
 pub(crate) fn apply_preferences(next:&List){crate::language_ui::request(next);}
 
-fn save_preferences()->bool{
+pub(crate) fn save_preferences()->bool{
  let next=STATE.with(|s|s.list.clone());
  match storage::save_settings(&next){
   Ok(())=>{STATE.with(|s|s.settings_notice=2);true},
@@ -493,7 +499,7 @@ fn details(cv:&Canvas,s:&State,r:Option<Recipe>){
    row(l::AFFINITY[lang],&format!("{}%",d.affinity),y);y+=step;
   }
   if r.kind!=25&&(armor||d.defense!=0){row(l::DEFENSE[lang],&format!("{}",d.defense),y);y+=step;}
-  cv.box_text(995.,y,151.,step-2.,font,WHITE,l::SLOTS[lang],false);cv.slots(1167.,y+3.,d.slots);cv.line(995.,y+step-2.,1239.,y+step-2.,RULE);y+=step;
+  cv.box_text(995.,y,151.,step-2.,font,WHITE,l::SLOTS[lang],false);cv.slots(1167.,y,step-2.,d.slots);cv.line(995.,y+step-2.,1239.,y+step-2.,RULE);y+=step;
   let resist=[ ["Fire","火","火","火耐性","불 내성","Feuer","Feu","Fuoco","Fuego"],["Water","水","水","水耐性","물 내성","Wasser","Eau","Acqua","Agua"],["Thunder","雷","雷","雷耐性","번개 내성","Donner","Foudre","Tuono","Rayo"],["Ice","冰","冰","氷耐性","얼음 내성","Eis","Glace","Ghiaccio","Hielo"],["Dragon","龙","龍","龍耐性","용 내성","Drache","Dragon","Drago","Dragón"] ];
   if armor{for i in 0..5{row_color(resist[i][lang],&format!("{}",d.resist[i]),y,crate::presentation::ELEMENTS[i]);y+=step;}}
 
@@ -820,18 +826,8 @@ pub fn render(){
  let engaged=guest_frame(if closed{sim}else{None},e&c::OPEN_REGISTER!=0,pad_allowed);
  if engaged{e&=!(c::OPEN_REGISTER|c::OPEN_LIST);}else{if pad&c::PAD_REGISTER!=0{e|=c::OPEN_REGISTER}if pad&c::PAD_LIST!=0{e|=c::OPEN_LIST}
   // The menu entry is a decision, not a pad shortcut: no keyboard guard.
-  if pending&c::MENU_OPEN!=0{
-   // In the 'Mods' panel: open the chosen mod. On the Hunter's Notes row: one
-   // participant opens directly, more open the game's own third panel.
-   let target=crate::game_menu::panel_choice().or_else(||match crate::mod_menu_model::pick(&crate::mod_menu::entries()){
-    Some(crate::mod_menu_model::Pick::Open(a))=>Some(a),
-    Some(crate::mod_menu_model::Pick::List)=>{crate::game_menu::request_mods_panel();None}
-    None=>None,
-   });
-   if let Some(a)=target{if crate::mod_menu::is_ours(a){e|=c::OPEN_LIST}else{crate::mod_menu::request(a);}}
-  }
-  // Another mod hosting the shared entry asked us to open.
-  if crate::mod_menu::take_request(){e|=c::OPEN_LIST}}
+  // Our entry in the village / hall menu (page 3) opens the list.
+  if pending&c::MENU_OPEN!=0{e|=c::OPEN_LIST}}
  events(e);
  let open=STATE.with(|s|s.mode!=0);crate::kbm::set_free(open);if !open{crate::game_menu::set_help(None);}if open&&crate::button_prompts::is_recomp(){mouse_shield();}
  if !open{clear_hits();unsafe{*core::ptr::addr_of_mut!(HOVER)=None;}}
@@ -863,8 +859,12 @@ pub fn render(){
   if s.preview{cv.text(350.,35.,600.,17.,GOLD,&format!("{}    L / R  {}/8   B / Esc",l::PREVIEW[lang],s.preview_panel+1));}
   if registering{cv.section(146.,123.,320.,l::TARGET[lang]);cv.rect(146.,154.,320.,43.,INSET);cv.icon_plate(154.,160.,31.);if let Some(r)=s.frozen{cv.gear(r,156.,162.,27.);cv.box_text(197.,154.,258.,43.,BODY,WHITE,&name(r,lang),false);}}
   else{
-   for (tab,x,w,label) in [(0,185.,341.,l::LIST[lang]),(1,531.,358.,l::TOTAL[lang])]{cv.hit(x,126.,w,35.,Hit::Tab(tab));let here=s.tab==tab;let hover=unsafe{*core::ptr::addr_of!(HOVER)}==Some(Hit::Tab(tab));if here{cv.draw.add_rect_filled(cv.p(x,128.),cv.p(x+w,158.),GOLD,6.*cv.scale);}cv.rect(x,159.,w,1.,RULE);cv.box_text(x+8.,126.,w-16.,33.,24.,if here{0xff26221b}else if hover{WHITE}else{MUTED},label,true);}
-   cv.hit(144.,126.,36.,36.,Hit::Event(c::TAB_PREV));cv.hit(893.,126.,36.,36.,Hit::Event(c::TAB_NEXT));cv.icon(crate::icons::L,148.,130.,28.,WHITE);cv.icon(crate::icons::R,897.,130.,28.,WHITE);
+   // The tab band runs from just under the heading rule (y 121) to its own rule (y 159);
+   // the selected tab fills it, square on top against the heading rule.
+   const TOP:f32=122.;const BOTTOM:f32=159.;
+   for (tab,x,w,label) in [(0,185.,341.,l::LIST[lang]),(1,531.,358.,l::TOTAL[lang])]{cv.hit(x,TOP,w,BOTTOM-TOP,Hit::Tab(tab));let here=s.tab==tab;let hover=unsafe{*core::ptr::addr_of!(HOVER)}==Some(Hit::Tab(tab));if here{cv.draw.add_rect_filled_ex(cv.p(x,TOP),cv.p(x+w,BOTTOM),GOLD,6.*cv.scale,ImDrawFlags::RoundCornersBottom);}cv.rect(x,BOTTOM,w,1.,RULE);cv.box_text(x+8.,TOP,w-16.,BOTTOM-TOP,24.,if here{0xff26221b}else if hover{WHITE}else{MUTED},label,true);}
+   let icon_y=(TOP+BOTTOM)*0.5-14.;
+   cv.hit(144.,TOP,36.,BOTTOM-TOP,Hit::Event(c::TAB_PREV));cv.hit(893.,TOP,36.,BOTTOM-TOP,Hit::Event(c::TAB_NEXT));cv.icon(crate::icons::L,148.,icon_y,28.,WHITE);cv.icon(crate::icons::R,897.,icon_y,28.,WHITE);
   }
   let selected=selected_recipe(s);
   if s.tab==0{

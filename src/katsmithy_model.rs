@@ -1,10 +1,13 @@
 //! Pure KatSmithy helpers: module identity, NRO import-slot lookup and the
 //! direction gate applied to its Forge input imports while the wishlist owns input.
 
-/// All markers must appear in the module's read-only segment.
+/// All markers must appear in the module's read-only segment. Our own mods that look for
+/// KatSmithy (Better Skillinfo, the Korean patch, Wishlist) carry the same markers, so a
+/// module with one of their log prefixes is never KatSmithy.
 pub fn identifies(ro:&[u8])->bool{
- [b"[KatSmithy]".as_slice(),b"katsmithy.ini".as_slice(),b"Skill points by piece".as_slice()]
- .iter().all(|s|ro.windows(s.len()).any(|w|w==*s))
+ let has=|s:&[u8]|ro.windows(s.len()).any(|w|w==s);
+ [b"[KatSmithy]".as_slice(),b"katsmithy.ini".as_slice(),b"Skill points by piece".as_slice()].iter().all(|s|has(s))
+ &&![b"[better-skillinfo]".as_slice(),b"[korean-".as_slice(),b"[wishlist]".as_slice(),b"[skill-sim".as_slice()].iter().any(|s|has(s))
 }
 
 /// Forge input imports KatSmithy reads its tree navigation from.
@@ -284,6 +287,9 @@ mod tests{
  #[test]fn module_identity_requires_all_markers(){
   assert!(identifies(b"[KatSmithy] katsmithy.ini Skill points by piece"));
   assert!(!identifies(b"[KatSmithy] katsmithy.ini"));
+  // A mod that only looks for KatSmithy carries the markers too.
+  assert!(!identifies(b"[KatSmithy] katsmithy.ini Skill points by piece [better-skillinfo]"));
+  assert!(!identifies(b"[KatSmithy] katsmithy.ini Skill points by piece [korean-katsmithy]"));
  }
  fn put(image:&mut Vec<u8>,at:usize,v:u32){if image.len()<at+4{image.resize(at+4,0);}image[at..at+4].copy_from_slice(&v.to_le_bytes());}
  // A minimal NRO image: MOD0 -> dynamic -> JMPREL with two jump slots.
