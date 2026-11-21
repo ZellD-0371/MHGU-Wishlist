@@ -62,7 +62,7 @@ In the village or the gathering hall, open the Game Menu and choose Wishlist on 
 | Input — Nintendo layout | Action |
 | --- | --- |
 | R3 | Register the selected equipment / removal of an existing entry |
-| L3 + R3 or backtick key at the Smithy or in the Game Menu | Open the wishlist |
+| L3 + R3 or backtick key at the Smithy| Open the wishlist |
 | Game Menu → page 3 → Wishlist (village, gathering hall) | Open Wishlist |
 
 Changing the button layout changes the displayed icons. Wishlist shortcuts can be customized independently under Key bindings; The wishlist cannot be opened on the title or character selection screen.
