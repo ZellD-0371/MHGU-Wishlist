@@ -12,7 +12,9 @@ static SCANNED:AtomicBool=AtomicBool::new(false);
 static MODULE:AtomicU32=AtomicU32::new(0);
 static MODULE_SIZE:AtomicU32=AtomicU32::new(0);
 static OWNED:AtomicBool=AtomicBool::new(false);
-static ORIGINAL:[AtomicU32;4]=[const{AtomicU32::new(0)};4];
+static ORIGINAL:[AtomicU32;5]=[const{AtomicU32::new(0)};5];
+static MOUSE_LATCH:AtomicU32=AtomicU32::new(0);
+static CLOSE_GRACE:AtomicU32=AtomicU32::new(0);
 static LATCH:[AtomicU32;2]=[const{AtomicU32::new(0)};2];
 static INSTALLED:AtomicBool=AtomicBool::new(false);
 // KatSmithy's data + bss, where its armor list and weapon tree records live.
@@ -23,9 +25,13 @@ static REGION_LEN:AtomicU32=AtomicU32::new(0);
 static ARMOR_AT:AtomicU32=AtomicU32::new(0);
 static ARMOR_IDS:AtomicU32=AtomicU32::new(0);
 static TREE_AT:AtomicU32=AtomicU32::new(0);
-static ARMOR_WAIT:AtomicU32=AtomicU32::new(0);
-static TREE_WAIT:AtomicU32=AtomicU32::new(0);
-const RESCAN_CALLS:u32=120;
+static FRAME:AtomicU32=AtomicU32::new(0);
+static SEARCH_LOCK:AtomicBool=AtomicBool::new(false);
+struct Searches{armor:crate::katsmithy_search::Search,tree:crate::katsmithy_search::Search,budget:crate::katsmithy_search::Budget}
+static mut SEARCHES:Searches=Searches{armor:crate::katsmithy_search::Search::new(),tree:crate::katsmithy_search::Search::new(),budget:crate::katsmithy_search::Budget::new(crate::katsmithy_search::POSITIONS_PER_FRAME)};
+/// One search budget for all update/render/input callers in this frame.
+pub fn begin_frame(){FRAME.fetch_add(1,Ordering::Relaxed);let _=CLOSE_GRACE.try_update(Ordering::Relaxed,Ordering::Relaxed,|v|Some(v.saturating_sub(1)));}
+fn owns_input()->bool{OWNED.load(Ordering::Acquire)||CLOSE_GRACE.load(Ordering::Relaxed)!=0}
 // From KatSmithy's tree renderer (see katsmithy_model::renderer): where it keeps
 // the screen transform it draws with, and whether its layout constants match.
 static VIEW_AT:AtomicU32=AtomicU32::new(0);
@@ -53,6 +59,7 @@ pub fn set_owned(owned:bool){
  let down:unsafe extern "C" fn(u32)->u32=unsafe{core::mem::transmute(original(0))};
  let held_of=|bits:u64|(0..model::BUTTONS).filter(|bit|bits&(1<<bit)!=0).fold(0u64,|held,bit|if unsafe{down(bit)}&0xff!=0{held|1<<bit}else{held});
  if was{
+  CLOSE_GRACE.store(3,Ordering::Relaxed);
   // Snapshot what is still held: KatSmithy may first ask after we closed.
   store_latch(model::release_latch(load_latch(),held_of(u64::MAX)));
  }else{
@@ -71,7 +78,7 @@ fn load_latch()->u64{u64::from(LATCH[0].load(Ordering::Acquire))|(u64::from(LATC
 fn store_latch(v:u64){LATCH[0].store(v as u32,Ordering::Release);LATCH[1].store((v>>32) as u32,Ordering::Release);}
 fn blocked(bit:u32,held:bool)->bool{
  let mut latch=load_latch();
- let blocked=model::button_blocked(bit,held,OWNED.load(Ordering::Acquire),&mut latch);
+ let blocked=model::button_blocked(bit,held,owns_input(),&mut latch);
  store_latch(latch);blocked
 }
 /// KatSmithy's input imports are wrapped: its navigation takeover then has nothing
@@ -97,12 +104,27 @@ unsafe fn stick(index:usize,latch:&AtomicBool,x:*mut f32,y:*mut f32){
  unsafe{call(x,y)};
  let read=|p:*mut f32|if p.is_null(){0.}else{unsafe{ptr::read_unaligned(p)}};
  let mut held=latch.load(Ordering::Acquire);
- let blocked=model::stick_blocked(read(x),read(y),OWNED.load(Ordering::Acquire),&mut held);
+ let blocked=model::stick_blocked(read(x),read(y),owns_input(),&mut held);
  latch.store(held,Ordering::Release);
  if blocked{for p in [x,y]{if !p.is_null(){unsafe{ptr::write_unaligned(p,0.)}}}}
 }
 unsafe extern "C" fn stick_left(x:*mut f32,y:*mut f32){unsafe{stick(2,&STICK_LATCH[0],x,y)}}
 unsafe extern "C" fn stick_right(x:*mut f32,y:*mut f32){unsafe{stick(3,&STICK_LATCH[1],x,y)}}
+
+// KatSmithy polls the free mouse independently of its pad imports. Keep the
+// coordinates/availability, but consume clicks until every held button releases.
+unsafe extern "C" fn mouse(x:*mut f32,y:*mut f32,buttons:*mut u32)->bool{
+ let call:unsafe extern "C" fn(*mut f32,*mut f32,*mut u32)->bool=unsafe{core::mem::transmute(original(4))};
+ let available=unsafe{call(x,y,buttons)};
+ if !buttons.is_null(){
+  let raw=if available{unsafe{ptr::read_unaligned(buttons)}}else{0};
+  let mut latch=MOUSE_LATCH.load(Ordering::Acquire);
+  let filtered=model::mouse_buttons(raw,owns_input(),&mut latch);
+  MOUSE_LATCH.store(latch,Ordering::Release);
+  unsafe{ptr::write_unaligned(buttons,filtered)};
+ }
+ available
+}
 
 fn discover(own:u32)->Option<(u32,u32,u32)>{
  let mut at=0u32;
@@ -165,6 +187,14 @@ pub fn install_once(){
   ORIGINAL[i].store(targets[i],Ordering::Release);
   unsafe{ptr::write_volatile((base+slots[i].unwrap_or(0)) as *mut u32,detours[i])};
  }
+ // Optional on older KatSmithy builds; never replace an import twice.
+ if let Some(slot)=model::import_slots(bytes,base,[b"forge_input_getMouse".as_slice()])[0]{
+  let target=unsafe{word(base+slot)};
+  if writable(base+slot)&&target>=0x10000&&target&3==0&&target.wrapping_sub(base)>=image{
+   ORIGINAL[4].store(target,Ordering::Release);
+   unsafe{ptr::write_volatile((base+slot) as *mut u32,mouse as *const () as u32)};
+  }else{warn!("[wishlist] KatSmithy mouse import invalid; mouse input left untouched");}
+ }
  INSTALLED.store(true,Ordering::Release);
  info!("[wishlist] KatSmithy input imports wrapped: input withheld while the wishlist is open");
 }
@@ -173,17 +203,29 @@ fn region()->Option<&'static [u8]>{
  let (at,len)=(REGION.load(Ordering::Acquire),REGION_LEN.load(Ordering::Acquire));
  (at!=0).then(||unsafe{core::slice::from_raw_parts(at as *const u8,len as usize)})
 }
-/// The strict content search (`find`) runs until the record is found, at most
-/// every RESCAN_CALLS. KatSmithy's records are static globals, so afterwards only
-/// the light per-frame check (`live`) runs; a frame where it fails (a list being
-/// rebuilt) just draws nothing, without searching again.
-fn locate<T>(m:&[u8],cache:&AtomicU32,wait:&AtomicU32,live:impl Fn(&[u8],usize)->Option<T>,find:impl Fn(&[u8])->Option<usize>)->Option<T>{
+/// Search in bounded slices until found, then retain the validated global's
+/// address. Transient rebuilds skip rendering without triggering a new scan.
+fn locate<T>(m:&[u8],cache:&AtomicU32,ready:bool,armor:bool,name:&str,live:impl Fn(&[u8],usize)->Option<T>,candidate:impl Fn(&[u8],usize)->Option<usize>)->Option<T>{
  let at=cache.load(Ordering::Acquire);
  if at!=0{return live(m,at as usize-1)}
- let left=wait.load(Ordering::Acquire);if left>0{wait.store(left-1,Ordering::Release);return None}
- wait.store(RESCAN_CALLS,Ordering::Release);
- let found=find(m)?;cache.store(found as u32+1,Ordering::Release);live(m,found)
+ if SEARCH_LOCK.compare_exchange(false,true,Ordering::Acquire,Ordering::Relaxed).is_err(){return None}
+ let result=unsafe{
+  let s=&mut *core::ptr::addr_of_mut!(SEARCHES);
+  let search=if armor{&mut s.armor}else{&mut s.tree};
+  search.step(FRAME.load(Ordering::Relaxed) as u64,ready,m.len(),&mut s.budget,|at|{
+   if at==0{crate::diagnostics::resource_record(format_args!("KatSmithy {} content search started: frame={} budget_positions={}",name,FRAME.load(Ordering::Relaxed),crate::katsmithy_search::POSITIONS_PER_FRAME));}
+   candidate(m,at)
+  })
+ };
+ SEARCH_LOCK.store(false,Ordering::Release);
+ match result{
+  crate::katsmithy_search::Result::Found(found)=>{crate::diagnostics::resource_record(format_args!("KatSmithy {} content search completed: frame={} encoded_data_offset={:X}",name,FRAME.load(Ordering::Relaxed),found));cache.store(found as u32+1,Ordering::Release);live(m,found)}
+  crate::katsmithy_search::Result::Miss(n)=>{if n==2{warn!("[wishlist] KatSmithy {} record absent after two completed searches; retrying with backoff",name);}None}
+  crate::katsmithy_search::Result::Pending=>None,
+ }
 }
+// The low byte is already 3 during 0x0903 construction; wait for settled 0x0003.
+fn search_ready(base:u32)->bool{crate::native_badges::open_hunter(base).is_some_and(|w|unsafe{rd(w+4)}&0xffff==3)}
 fn hunter_list(base:u32,kinds:core::ops::RangeInclusive<u16>)->Option<u16>{
  let window=crate::native_badges::open_hunter(base)?;let kind=unsafe{half(window+0x5c)};
  (unsafe{rd(window+4)}&0xff==3&&kinds.contains(&kind)).then_some(kind)
@@ -195,9 +237,9 @@ unsafe fn half(a:u32)->u16{unsafe{ptr::read_unaligned(a as *const u16)}}
 pub struct ArmorView{state:model::ArmorState}
 pub fn armor_view(base:u32)->Option<ArmorView>{
  hunter_list(base,1..=5)?;let m=region()?;
- let find=|m:&[u8]|{let at=model::find_armor(m)?;ARMOR_IDS.store(model::armor_at(m,at)?.ids as u32,Ordering::Release);Some(at)};
+ let candidate=|m:&[u8],at:usize|{let record=model::armor_at(m,at)?;ARMOR_IDS.store(record.ids as u32,Ordering::Release);Some(at)};
  let live=|m:&[u8],at:usize|model::armor_live(m,at,ARMOR_IDS.load(Ordering::Acquire) as usize);
- locate(m,&ARMOR_AT,&ARMOR_WAIT,live,find).map(|state|ArmorView{state})
+ locate(m,&ARMOR_AT,search_ready(base),true,"armor list",live,candidate).map(|state|ArmorView{state})
 }
 fn registered(list:&crate::model::List,kind:u8,id:u16)->bool{
  list.slots.iter().flatten().any(|e|e.recipe.kind==kind&&e.recipe.id==id&&e.recipe.level==0)
@@ -223,12 +265,12 @@ pub fn armor_selection(view:ArmorView)->Option<crate::model::Recipe>{
 pub struct WeaponView{tree:model::TreeState,kind:u8,scroll_x:f32,scroll_y:f32}
 fn tree(base:u32)->Option<(&'static [u8],model::TreeState,u16)>{
  let kind=hunter_list(base,7..=21)?;let m=region()?;
- Some((m,locate(m,&TREE_AT,&TREE_WAIT,model::tree_live,model::find_tree)?,kind))
+ Some((m,locate(m,&TREE_AT,search_ready(base),false,"weapon tree",model::tree_live,|m,at|(0..model::TREE_LAYOUTS.len() as u8).find(|&l|model::tree_at(m,at,l).is_some()).map(|l|at|l as usize))?,kind))
 }
 /// KatSmithy's material selection dialog over its weapon tree: the wishlist then
 /// shows no pins or shortcut bars and takes no registration.
 pub fn tree_dialog(base:u32)->bool{
- tree(base).is_some_and(|(m,t,_)|model::tree_u32(m,t,model::TREE_DIALOG)==Some(1))
+ tree(base).is_some_and(|(m,t,_)|model::tree_u32(m,t,t.layout().dialog)==Some(1))
 }
 /// KatSmithy's screen transform (origin x, origin y, scale) for its 1280x720 space:
 /// read from where its renderer keeps it, so its own handling of 21:9, 32:9 and
@@ -242,11 +284,15 @@ pub fn transform(width:f32,height:f32)->Option<(f32,f32,f32)>{
 pub fn weapon_view(base:u32)->Option<WeaponView>{
  if !TREE_LAYOUT_OK.load(Ordering::Acquire){return None}
  let (m,tree,kind)=tree(base)?;
- if model::tree_u32(m,tree,model::TREE_MODE)?!=1||model::tree_u32(m,tree,model::TREE_DIALOG)?==1{return None}
- let scroll_x=f32::from_bits(model::tree_u32(m,tree,model::TREE_SCROLL_X)?);let scroll_y=f32::from_bits(model::tree_u32(m,tree,model::TREE_SCROLL_Y)?);
+ let l=tree.layout();
+ if model::tree_u32(m,tree,l.mode)?!=1||model::tree_u32(m,tree,l.dialog)?==1{return None}
+ // KatSmithy 1.5.0 tabs: 0 Tree, 1 Forge, 2 Upgrade. Forge and Upgrade draw the same
+ // tree filtered to what can be forged or upgraded; the record holds that tree.
+ if let Some(at)=l.tab{if model::tree_u32(m,tree,at)?>2{return None}}
+ let scroll_x=f32::from_bits(model::tree_u32(m,tree,l.scroll_x)?);let scroll_y=f32::from_bits(model::tree_u32(m,tree,l.scroll_y)?);
  // Scrolling stays within the tree's own extent; anything else is not a scroll value.
  let ok=|v:f32,limit:f32|v.is_finite()&&(-1.0..=limit).contains(&v);
- (ok(scroll_x,64.*54.*1.25)&&ok(scroll_y,(model::TREE_MAX_ROWS as f32+4.)*18.*1.25)).then_some(WeaponView{tree,kind:kind as u8,scroll_x,scroll_y})
+ (ok(scroll_x,64.*54.*1.25)&&ok(scroll_y,(l.max_rows as f32+4.)*18.*1.25)).then_some(WeaponView{tree,kind:kind as u8,scroll_x,scroll_y})
 }
 /// Pins on KatSmithy's tree nodes for registered weapons, in its 1280x720 space.
 pub fn weapon_pins(view:WeaponView,list:&crate::model::List)->Vec<(f32,f32)>{
@@ -255,7 +301,10 @@ pub fn weapon_pins(view:WeaponView,list:&crate::model::List)->Vec<(f32,f32)>{
   let Some((id,col,row))=model::tree_line(m,view.tree,i) else{continue};
   for e in list.slots.iter().flatten(){
    if e.recipe.kind!=view.kind||e.recipe.id!=id{continue}
-   if let Some(p)=model::weapon_pin(col,row,model::weapon_node_level(e.recipe.level),view.tree.columns,view.scroll_x,view.scroll_y){out.push(p);}
+   let level=model::weapon_node_level(e.recipe.level);
+   // KatSmithy 1.5.0's Forge and Upgrade tabs hide nodes that cannot be forged or upgraded.
+   if !model::tree_node_drawn(m,view.tree,id,level){continue}
+   if let Some(p)=model::weapon_pin(col,row,level,view.tree.columns,view.scroll_x,view.scroll_y){out.push(p);}
   }
  }
  out
@@ -263,8 +312,10 @@ pub fn weapon_pins(view:WeaponView,list:&crate::model::List)->Vec<(f32,f32)>{
 /// The weapon under KatSmithy's cursor as (kind, line id, node level), when it
 /// is one of the displayed lines.
 pub fn weapon_selection(view:WeaponView)->Option<(u8,u16,u32)>{
- let m=region()?;let id=model::tree_u32(m,view.tree,model::TREE_SELECTED_ID)?;let level=model::tree_u32(m,view.tree,model::TREE_SELECTED_LEVEL)?;
- if !(1..=20).contains(&level)||!(0..view.tree.rows).any(|i|model::tree_line(m,view.tree,i).is_some_and(|l|u32::from(l.0)==id)){return None}
+ let m=region()?;let l=view.tree.layout();let id=model::tree_u32(m,view.tree,l.selected_id)?;let level=model::tree_u32(m,view.tree,l.selected_level)?;
+ if !(1..=20).contains(&level)||id==0||id>0xffff{return None}
+ // The selection must be one of the displayed lines.
+ if !(0..view.tree.rows).any(|i|model::tree_line(m,view.tree,i).is_some_and(|l|u32::from(l.0)==id)){return None}
  Some((view.kind,id as u16,level))
 }
 /// A recipe for a tree node: level 1 is forged (level 0) where possible.

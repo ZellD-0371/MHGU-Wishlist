@@ -100,6 +100,15 @@ impl Canvas{
   if let Some(font)=unsafe{FONT}{self.draw.add_text_with_font(&font,pixels,self.p(tx,ty),color,text)}else{self.draw.add_text(self.p(tx,ty),color,text)}
   self.draw.pop_clip_rect();
  }
+ /// Align the visible glyph bounds to the right edge, including side bearings.
+ fn box_right(&self,x:f32,y:f32,w:f32,h:f32,size:f32,color:u32,text:&str){
+  let pixels=(self.pixels(size).max(1.) as u32) as f32;let metrics=self.metrics(pixels/self.scale,text);
+  let [_,right,top,bottom]=metrics.ink.map(|b|b.map(|n|n/self.scale)).unwrap_or([0.,metrics.width/self.scale,0.,pixels/self.scale]);
+  let tx=x+w-right;let ty=y+h*0.5-(top+bottom)*0.5;
+  self.draw.push_clip_rect(self.p(x,y),self.p(x+w,y+h),true);
+  if let Some(font)=unsafe{FONT}{self.draw.add_text_with_font(&font,pixels,self.p(tx,ty),color,text)}else{self.draw.add_text(self.p(tx,ty),color,text)}
+  self.draw.pop_clip_rect();
+ }
  fn raw_icon(&self,tile:usize,x:f32,y:f32,size:f32,tint:u32){let p=self.p(x,y);crate::icons::draw(self.draw,tile,p.x,p.y,self.pixels(size),self.pixels(size),tint,false);}
  fn icon(&self,mut tile:usize,x:f32,y:f32,size:f32,tint:u32){
   // Each sprite is tied to its *menu action*, not a numeric array position.
@@ -214,6 +223,11 @@ impl Canvas{
  }
  fn box_bold(&self,x:f32,y:f32,w:f32,h:f32,size:f32,color:u32,text:&str,center:bool){
   let offset=0.5/self.scale;self.box_text(x-offset,y,w,h,size,color,text,center);self.box_text(x+offset,y,w,h,size,color,text,center);
+ }
+ fn quest_pin(&self,x:f32,y:f32){
+  const SIZE:f32=1.65;
+  let enlarged=Canvas{scale:self.scale*SIZE,ox:self.ox,oy:self.oy,draw:self.draw};
+  enlarged.pin(x/SIZE,y/SIZE);
  }
  fn pin(&self,x:f32,y:f32){
   // A small enamel pushpin, drawn at native HUD scale rather than the user's list scale.
@@ -508,6 +522,143 @@ fn details(cv:&Canvas,s:&State,r:Option<Recipe>){
 fn action_a(cv:&Canvas,lang:usize){let x=501.;let w=426.;cv.box_text(x,319.,w,35.,29.,WHITE,l::REGISTER_ACTION[lang],true);cv.icon(crate::icons::A,x+(w-34.)*0.5,362.,34.,WHITE);}
 /// Registered-equipment pins on the game's lists, or on KatSmithy's armor list
 /// when it replaces the hunter's production list.
+fn draw_quest_equipment(native_cv:&Canvas,s:&mut State,rows:[crate::quest_badges::Row;8]){
+ // The wishlist's own detail pages draw over the lower half instead.
+ if crate::quest_badges::pages(s.base).is_some_and(|p|p.page>=p.native){s.quest_scroll.reset();return}
+ let Some(detail)=crate::quest_badges::detail(s.base,rows)else{s.quest_scroll.reset();return};
+ // The same gear as the detail's wishlist page: short for the gear itself.
+ let slots=quest_gears(s,detail.quest).iter().fold(0u64,|mask,g|mask|(1u64<<g.slot));
+ let ids:Vec<usize>=(0..crate::model::CAPACITY).filter(|i|slots&(1u64<<i)!=0).collect();
+ let (top,motion)=s.quest_scroll.step(detail.quest,slots,imgui::get_io().DeltaTime);
+ if ids.is_empty(){return}
+ let io=imgui::get_io();let Some(view)=crate::hud_layout::left_bottom(io.DisplaySize.x,io.DisplaySize.y,crate::hud_layout::current(s.base))else{return};
+ let cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:native_cv.draw};
+ // Left of the monster icons, in the empty strip under the title rule (the icons
+ // start about 26 units right of the old 154-wide block's right edge). A small card
+ // like the wishlist page's: a header with the count, two rows that scroll through
+ // the rest, and dots for the rows in view.
+ const CARD:u32=0xff9ebecb;const INK:u32=0xff292720;const HEAD:u32=0xff3c5a6a;const LINE:u32=0xff8aabb9;const DOT_ON:u32=0xff344a5a;const DOT_OFF:u32=0xff82a3b2;
+ // Card left edge on the title rule's left end, a small gap below the rule (measured).
+ let (x,y,w,pitch)=(detail.x-21.,detail.y,150.,28.);let lang=s.list.language;
+ let many=ids.len()>2;let rows=ids.len().min(2) as f32;
+ let head=y-1.;let list_top=head+20.;
+ let card_h=20.+rows*pitch+if many{10.}else{0.}+4.;
+ cv.rect(x-4.,head,w+8.,card_h,CARD);
+ cv.box_text(x,head,w-34.,18.,13.,HEAD,l::QUEST_GEAR[lang],false);
+ cv.draw.add_rect_filled(cv.p(x+w-28.,head+3.),cv.p(x+w,head+16.),HEAD,6.*cv.scale);
+ cv.center(x+w-28.,head+3.,28.,13.,0xffd8ecf4,&format!("{}",ids.len()));
+ cv.line(x,head+18.,x+w,head+18.,LINE);
+ cv.draw.push_clip_rect(cv.p(x-4.,list_top),cv.p(x+w+4.,list_top+rows*pitch),true);
+ let count=if many{3}else{ids.len()};
+ for i in 0..count{
+  let Some(&slot)=ids.get(top+i)else{break};let Some(entry)=s.list.slots[slot]else{continue};
+  let yy=list_top+i as f32*pitch-motion*pitch;
+  cv.gear(entry.recipe,x,yy+3.,22.);
+  let mut text=name(entry.recipe,lang);
+  if cv.measure(17.,&text)>w-28.{
+   loop{if text.is_empty(){break}text.pop();let candidate=format!("{}…",text);if cv.measure(17.,&candidate)<=w-28.{text=candidate;break}}
+  }
+  cv.box_text(x+28.,yy,w-28.,pitch,17.,INK,&text,false);
+ }
+ cv.draw.pop_clip_rect();
+ if many{
+  // One dot per gear (at most twelve); the two in view are dark.
+  let n=ids.len().min(12);let step=8.;let left=x+w*0.5-(n as f32-1.)*step*0.5;let dy=list_top+rows*pitch+5.;
+  let lit=|i:usize|i==top||i==top+1||(motion>0.&&i==top+2);
+  for i in 0..n{cv.draw.add_circle_filled(cv.p(left+i as f32*step,dy),2.5*cv.scale,if lit(i){DOT_ON}else{DOT_OFF},12);}
+ }
+}
+/// A registered gear on the quest detail's wishlist pages: its short materials this
+/// quest can yield (at most three, most short first) and how many short ones are not
+/// (or did not fit).
+struct QuestGear{slot:usize,recipe:Recipe,rows:Vec<(u16,u32,u32)>,others:u32,complete:bool,combined:Option<(u16,u32)>}
+fn quest_gears(s:&mut State,quest:u32)->Vec<QuestGear>{
+ let mask=s.quest_materials.related(quest,g::PROVISIONS);let mut out=Vec::new();let totals=s.list.totals();
+ for slot in 0..crate::model::CAPACITY{
+  if mask&(1u64<<slot)==0{continue}let Some(entry)=s.list.slots[slot] else{continue};let r=entry.recipe;
+  let (mut rows,mut others,mut combined)=(Vec::new(),0u32,None);
+  for m in r.materials.iter().filter(|m|m.count>0&&m.id>0&&m.id<4096){
+   // Short for this gear itself: owning enough for it alone is not shown, even when
+   // all registrations together need more.
+   let owned=s.stock[m.id as usize];
+   if owned>=m.count{
+    // Enough for this gear alone but not with the other wishes: one quiet line.
+    let total=totals.iter().find(|t|t.id==m.id).map_or(0,|t|t.count);
+    if combined.is_none()&&total>owned&&crate::quest_materials::obtainable(quest,m.id){combined=Some((m.id,total-owned));}
+    continue
+   }
+   if crate::quest_materials::obtainable(quest,m.id){rows.push((m.id,owned,m.count));}else{others+=1;}
+  }
+  // Nothing this quest yields is short for it (only combined totals were): no card.
+  if rows.is_empty()&&r.group==0{continue}
+  let complete=others==0&&!rows.is_empty();
+  rows.sort_by_key(|&(_,owned,need)|core::cmp::Reverse(need.saturating_sub(owned)));
+  if rows.len()>3{others+=(rows.len()-3) as u32;rows.truncate(3);}
+  out.push(QuestGear{slot,recipe:r,rows,others,complete,combined});
+ }
+ // Gear this quest can finish first, then the ones it helps most, then wishlist order.
+ out.sort_by_key(|g|(!g.complete,core::cmp::Reverse(g.rows.len()),g.slot));out
+}
+const QUEST_GEARS_PER_PAGE:usize=4;
+/// Wishlist pages the quest detail gets: none without related gear, then one per four.
+pub(crate) fn quest_extra_pages(s:&mut State,quest:u32)->u32{
+ if !s.loaded||!s.stock_ready{return 0}
+ match quest_gears(s,quest).len(){0=>0,1..=4=>1,_=>2}
+}
+/// The quest detail's wishlist pages (after the game's own): below the title rule,
+/// cards of related gear in two columns and two rows. With more than eight, the last
+/// card says how many more there are.
+fn draw_quest_pages(native_cv:&Canvas,s:&mut State){
+ let Some(p)=crate::quest_badges::pages(s.base) else{return};if p.page<p.native{return}
+ let io=imgui::get_io();let Some(view)=crate::hud_layout::left_bottom(io.DisplaySize.x,io.DisplaySize.y,crate::hud_layout::current(s.base))else{return};
+ let cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:native_cv.draw};let lang=s.list.language;
+ // The lower half of the parchment panel (measured at 16:9: x 21-642, y 252-531).
+ const PARCHMENT:u32=0xffb1d2dd;const CARD:u32=0xff9ebecb;const INK:u32=0xff292720;const SHORT_INK:u32=0xff223ab3;const FAINT:u32=0xff4c6a7a;const LINE:u32=0xff8aabb9;
+ cv.rect(22.,252.,619.,279.,PARCHMENT);
+ // While the next quest loads: the empty parchment only (its cards follow), and the
+ // pager keeps showing this page (the game briefly counts its own last page there).
+ if p.loading{
+  const PAGER:u32=0xff404b59;const DIGIT:u32=0xffeaeef0;
+  cv.rect(526.,154.,22.,24.,PAGER);cv.center(526.,154.,22.,24.,DIGIT,&format!("{}",p.page+1));
+  return
+ }
+ let gears=quest_gears(s,p.quest);if gears.is_empty(){return}
+ let index=(p.page-p.native) as usize;let start=index*QUEST_GEARS_PER_PAGE;
+ let overflow=gears.len()>2*QUEST_GEARS_PER_PAGE&&index==1;
+ let shown=if overflow{QUEST_GEARS_PER_PAGE-1}else{QUEST_GEARS_PER_PAGE};
+ let cards:Vec<&QuestGear>=gears.iter().skip(start).take(shown).collect();
+ let (left,top,width,gap)=(34.,262.,292.,11.);
+ let height=|g:&QuestGear|26.+g.rows.len().max(1) as f32*20.+if g.others>0{20.}else{0.}+if g.combined.is_some(){20.}else{0.}+8.;
+ let mut y=top;
+ for pair in 0..2usize{
+  let mut row_h:f32=0.;
+  for col in 0..2usize{
+   let i=pair*2+col;let x=left+col as f32*(width+gap);
+   if let Some(g)=cards.get(i){
+    let h=height(g);row_h=row_h.max(h);cv.rect(x,y,width,h,CARD);
+    cv.gear(g.recipe,x+6.,y+3.,20.);cv.box_text(x+32.,y,width-38.,26.,17.,INK,&name(g.recipe,lang),false);cv.line(x+6.,y+26.,x+width-6.,y+26.,LINE);
+    let mut ry=y+28.;
+    if g.rows.is_empty(){cv.box_text(x+10.,ry,width-20.,20.,15.,FAINT,l::GROUP[lang],false);ry+=20.;}
+    for &(id,owned,need) in &g.rows{
+     let (tile,tint)=crate::icons::material(id);cv.icon(tile,x+8.,ry+2.,16.,tint);
+     cv.box_text(x+30.,ry,width-30.-122.,20.,15.,INK,&item(id,lang),false);
+     let short=need.saturating_sub(owned);
+     if short>0{cv.box_right(x+width-118.,ry,70.,20.,15.,SHORT_INK,&l::QUEST_SHORT[lang].replace("{}",&format!("{}",short)));}
+     cv.box_right(x+width-44.,ry,38.,20.,15.,if short>0{FAINT}else{SHORT_INK},&format!("{}/{}",owned,need));
+     ry+=20.;
+    }
+    if g.others>0{cv.box_text(x+10.,ry,width-20.,20.,14.,FAINT,&l::QUEST_OTHERS[lang].replace("{}",&format!("{}",g.others)),false);ry+=20.;}
+    if let Some((id,short))=g.combined{cv.box_text(x+10.,ry,width-20.,20.,14.,FAINT,&l::QUEST_COMBINED[lang].replace("{item}",&item(id,lang)).replace("{n}",&format!("{}",short)),false);}
+   }else if overflow&&i==shown{
+    // The rest: their count and a few icons.
+    let rest=&gears[start+shown..];let h=54.;row_h=row_h.max(h);cv.rect(x,y,width,h,CARD);
+    cv.box_text(x+10.,y,width-20.,26.,17.,INK,&l::MORE[lang].replace("{}",&format!("{}",rest.len())),false);
+    for (k,g) in rest.iter().take(10).enumerate(){cv.gear(g.recipe,x+10.+k as f32*26.,y+28.,20.);}
+   }
+  }
+  y+=row_h+8.;
+ }
+}
 fn draw_pins(native_cv:&Canvas,s:&crate::State){
  let armor=crate::katsmithy::armor_view(s.base);let tree=crate::katsmithy::weapon_view(s.base);
  for marker in crate::native_badges::markers_with(&s.list,s.base,armor.is_none()&&tree.is_none()){native_cv.pin(marker.x,marker.y);}
@@ -825,13 +976,15 @@ pub fn render(){
  let sim=crate::sksim::frame();crate::game_menu::set_other_open(sim.is_some());
  let engaged=guest_frame(if closed{sim}else{None},e&c::OPEN_REGISTER!=0,pad_allowed);
  if engaged{e&=!(c::OPEN_REGISTER|c::OPEN_LIST);}else{if pad&c::PAD_REGISTER!=0{e|=c::OPEN_REGISTER}if pad&c::PAD_LIST!=0{e|=c::OPEN_LIST}
-  // The menu entry is a decision, not a pad shortcut: no keyboard guard.
-  // Our entry in the village / hall menu (page 3) opens the list.
-  if pending&c::MENU_OPEN!=0{e|=c::OPEN_LIST}}
+  }
+ // Shortcuts are smithy-only; choosing the actual menu entry remains available.
+ if closed&&!STATE.with(|s|s.at_smithy()){e&=!c::OPEN_LIST;}
+ if !engaged&&pending&c::MENU_OPEN!=0{e|=c::OPEN_LIST;}
  events(e);
- let open=STATE.with(|s|s.mode!=0);crate::kbm::set_free(open);if !open{crate::game_menu::set_help(None);}if open&&crate::button_prompts::is_recomp(){mouse_shield();}
+ let open=STATE.with(|s|s.mode!=0);crate::katsmithy::set_owned(open);crate::kbm::set_free(open);if !open{crate::game_menu::set_help(None);}if open&&crate::button_prompts::is_recomp(){mouse_shield();}
  if !open{clear_hits();unsafe{*core::ptr::addr_of_mut!(HOVER)=None;}}
- if !STATE.with(|s|s.mode!=0||s.at_smithy()||crate::game_menu::visible(s.base)||!s.notices.is_empty()||crate::native_badges::available()){return}
+ let quest_rows=STATE.with(|s|crate::quest_badges::rows(s.base));
+ if quest_rows.is_none()&&!STATE.with(|s|s.mode!=0||s.at_smithy()||crate::game_menu::visible(s.base)||!s.notices.is_empty()||crate::native_badges::available()){return}
  // Cache one valid draw list for the frame; never pass a null list to cimgui.
  let Some(cv)=Canvas::new() else{return};
  unsafe{*core::ptr::addr_of_mut!(HIT_VIEW)=(cv.ox,cv.oy,cv.scale);}clear_hits();
@@ -839,11 +992,11 @@ pub fn render(){
   if !s.installed||!s.loaded||!s.game_ready{return}crate::icons::set_layout(s.list.layout);let lang=s.list.language;
   if s.mode==0{
    // KatSmithy's material dialog covers the smithy: no pins or bars over it.
-   if !engaged&&!crate::katsmithy::tree_dialog(s.base)&&let Some(view)=crate::hud_layout::right_top(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,crate::hud_layout::current(s.base)){let native_cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw};draw_pins(&native_cv,s);
+   if !engaged&&!crate::katsmithy::tree_dialog(s.base)&&let Some(view)=crate::hud_layout::right_top(imgui::get_io().DisplaySize.x,imgui::get_io().DisplaySize.y,crate::hud_layout::current(s.base)){let native_cv=Canvas{scale:view.scale,ox:view.ox,oy:view.oy,draw:cv.draw};draw_pins(&native_cv,s);if let Some(rows)=quest_rows{let hits=s.quest_materials.rows(&s.list,&s.stock,s.stock_ready,rows.map(|r|r.id),g::PROVISIONS);for (row,hit) in rows.iter().zip(hits){if hit{native_cv.quest_pin(row.x,row.y);}}draw_quest_equipment(&native_cv,s,rows);draw_quest_pages(&native_cv,s);}else{s.quest_scroll.reset();}
    // KatSmithy's weapon detail panel ends lower; lift both bars clear of its status box there.
    let lift=if crate::katsmithy::weapon_view(s.base).is_some(){36.}else{0.};
    // The game menu has our Hunter's Notes entry: its list bar is not needed there.
-   if s.at_smithy()||(crate::game_menu::visible(s.base)&&!crate::game_menu::entry()){let y=if crate::game_menu::visible(s.base){398.}else{496.-lift};native_cv.shortcut_bar(1102.,y,s.list.pad_bindings[0],s.list.key_bindings[0],l::TITLE[lang]);}if let Some(r)=s.active(){let registered=s.list.registered(r).is_some();native_cv.shortcut_bar(1102.,528.-lift,s.list.pad_bindings[1],s.list.key_bindings[1],if registered{l::QUICK_REMOVE[lang]}else{l::REGISTER[lang]});}}
+   if s.at_smithy(){let y=496.-lift;native_cv.shortcut_bar(1102.,y,s.list.pad_bindings[0],s.list.key_bindings[0],l::TITLE[lang]);}if let Some(r)=s.active(){let registered=s.list.registered(r).is_some();native_cv.shortcut_bar(1102.,528.-lift,s.list.pad_bindings[1],s.list.key_bindings[1],if registered{l::QUICK_REMOVE[lang]}else{l::REGISTER[lang]});}}
 
 
    for (slot,n) in s.notices.visible(){draw_notice(&cv,n.recipe,n.progress,lang,crate::presentation::NOTICE_DURATION-n.seconds,slot);}
@@ -910,6 +1063,12 @@ pub fn menu(){
  if !imgui::tree_node(c"Wishlist"){return}
  let font=unsafe{FONT};if let Some(f)=font{imgui::push_font(&f,Some(18.));}
  let (lang,installed,input)=STATE.with(|s|(s.list.language,s.installed,s.input_ready));
+ let playing=STATE.with(|s|s.game_ready&&s.loaded&&s.profile.is_some()&&s.mode==0);
+ imgui::begin_disabled(!playing);
+ let open_label=["열기","Open","開く","打开","開啟","Öffnen","Ouvrir","Apri","Abrir"];
+ let open=CString::new(open_label[crate::bindings::language(lang)]).unwrap();
+ if imgui::button(&open,ImVec2{x:0.,y:0.}){STATE.with(|s|s.open(false));}
+ imgui::end_disabled();
  #[cfg(feature="debug-ui")]{
  let capture_label=CString::new(if crate::sound::capturing(){l::STOP_SOUND[lang]}else{l::CAPTURE_SOUND[lang]}).unwrap();
  if imgui::button(&capture_label,ImVec2{x:0.,y:0.}){crate::sound::capture(!crate::sound::capturing());}
@@ -929,8 +1088,7 @@ pub fn menu(){
  crate::bindings::ui();
  let defaults=CString::new(l::SETTINGS_DEFAULTS[lang]).unwrap();
  if imgui::button(&defaults,ImVec2{x:0.,y:0.}){let mut list=STATE.with(|s|s.list.clone());list.reset_preferences();apply_preferences(&list);}
- imgui::same_line(0.,-1.);
- imgui::begin_disabled(STATE.with(|s|s.pending_preferences.is_some()));let save=CString::new(l::SETTINGS_SAVE[lang]).unwrap();if imgui::button(&save,ImVec2{x:0.,y:0.}){save_preferences();}imgui::end_disabled();
+
  match STATE.with(|s|s.settings_notice){1=>imgui::text(l::SETTINGS_PENDING[lang]),2=>imgui::text(l::SETTINGS_SAVED[lang]),3=>imgui::text(l::SETTINGS_FAILED[lang]),4=>imgui::text(l::LANGUAGE_FAILED[lang]),_=>{}}
  #[cfg(feature="debug-ui")]{
  let playing=STATE.with(|s|s.game_ready&&s.loaded&&s.profile.is_some());

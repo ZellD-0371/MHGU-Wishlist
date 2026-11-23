@@ -5,12 +5,14 @@ static EMITTED:AtomicU32=AtomicU32::new(0);
 #[cfg(test)]
 pub fn emitted()->u32{EMITTED.load(Ordering::Relaxed)}
 static ENABLED:AtomicBool=AtomicBool::new(false);
+static EPOCH:AtomicU32=AtomicU32::new(0);
+pub fn epoch()->u32{EPOCH.load(Ordering::Relaxed)}
 static INIT_OK:AtomicU32=AtomicU32::new(0);
 static INIT_FAILED:AtomicU32=AtomicU32::new(0);
 pub fn init_status(bit:u32,ok:bool){if ok{INIT_FAILED.fetch_and(!bit,Ordering::Relaxed);INIT_OK.fetch_or(bit,Ordering::Relaxed);}else{INIT_OK.fetch_and(!bit,Ordering::Relaxed);INIT_FAILED.fetch_or(bit,Ordering::Relaxed);}}
 static CLOCK:AtomicU32=AtomicU32::new(0);
 struct Channel{seen:AtomicBool,key:AtomicU32,time:AtomicU32,suppressed:AtomicU32}
-static CHANNELS:[Channel;17]=[const{Channel{seen:AtomicBool::new(false),key:AtomicU32::new(0),time:AtomicU32::new(0),suppressed:AtomicU32::new(0)}};17];
+static CHANNELS:[Channel;19]=[const{Channel{seen:AtomicBool::new(false),key:AtomicU32::new(0),time:AtomicU32::new(0),suppressed:AtomicU32::new(0)}};19];
 /// First sample immediately; changed failures at most once/second, identical ones once/30s.
 pub fn due(seen:bool,old:u32,key:u32,elapsed:u32)->bool{!seen||elapsed>=if old==key{30_000}else{1_000}}
 pub fn enabled()->bool{ENABLED.load(Ordering::Relaxed)}
@@ -32,6 +34,7 @@ pub fn resource_record(_:core::fmt::Arguments<'_>){}
 pub fn tick(dt:f32){if enabled()&&dt.is_finite(){CLOCK.fetch_add((dt.clamp(0.,1.)*1000.) as u32,Ordering::Relaxed);}}
 pub fn set_enabled(on:bool)->bool{
  if ENABLED.swap(on,Ordering::Relaxed)==on{return false}
+ EPOCH.fetch_add(1,Ordering::Relaxed);
  for c in &CHANNELS{c.seen.store(false,Ordering::Relaxed);c.suppressed.store(0,Ordering::Relaxed);}
  #[cfg(not(test))]
  if on{write(format_args!("v{} diagnostic logging enabled (diagnostic records are not necessarily errors)",env!("CARGO_PKG_VERSION")));crate::language::diagnose();}

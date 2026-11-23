@@ -710,6 +710,17 @@ KeyboardPrompts = off"));
  let n=hud_layout::picture(1920.,1080.,100,None).unwrap();
  assert!((n.scale-1.5).abs()<1e-4&&n.ox.abs()<1e-3);
 }
+#[test]fn quest_detail_follows_its_bottom_anchored_panel_on_tall_pictures(){
+ // 16:10 in a 16:9 window (measured): the picture is 1728x1080 at x 96, the UI space
+ // 1280x800, and the quest panel keeps its bottom distance: 80 units lower than 16:9.
+ let hud=hud_layout::HudSize{render_width:1728,render_height:1080,ui_width:1280};
+ let v=hud_layout::left_bottom(1920.,1080.,Some(hud)).unwrap();
+ assert!((v.scale-1.35).abs()<1e-4&&(v.ox-96.).abs()<1e-3&&(v.oy-108.).abs()<1e-3);
+ // 16:9: unchanged from the top-left mapping.
+ let w=hud_layout::left_bottom(1920.,1080.,Some(hud_layout::HudSize{render_width:1920,render_height:1080,ui_width:1280})).unwrap();
+ let t=hud_layout::left_top(1920.,1080.,Some(hud_layout::HudSize{render_width:1920,render_height:1080,ui_width:1280})).unwrap();
+ assert!((w.oy-t.oy).abs()<1e-3&&(w.ox-t.ox).abs()<1e-3&&(w.scale-t.scale).abs()<1e-4);
+}
 #[test]fn recomp_mouse_maps_over_the_game_picture(){
  use hud_layout::{mouse,HudSize as H};
  // 16:10 forced in a 16:9 window: the console's 1280x720 spans the 1728x1080 picture.
@@ -723,3 +734,9 @@ KeyboardPrompts = off"));
  // No renderer data: the whole window.
  assert_eq!(mouse(640.,360.,1920.,1080.,None),(960.,540.));
 }
+
+#[path="../src/katsmithy_search.rs"]mod katsmithy_search;
+
+#[path="../src/quest_materials.rs"]mod quest_materials;
+
+#[path="../src/quest_badge_model.rs"]mod quest_badge_model;

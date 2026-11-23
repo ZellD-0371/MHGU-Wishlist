@@ -215,47 +215,76 @@ pub fn renderer(image:&[u8],text:usize)->Option<Renderer>{
 }
 
 // Weapon tree record (relative to its start): columns, first column and row of
-// each line (by line ID), displayed rows with their row position, height and line ID.
-pub const TREE_COLUMNS:usize=0x10;pub const TREE_LINE_COL:usize=0x14;pub const TREE_LINE_ROW:usize=0x154;
-pub const TREE_ROWS:usize=0x294;pub const TREE_ROW_POS:usize=0x298;pub const TREE_ROW_HEIGHT:usize=0x3ec;pub const TREE_ROW_LINE:usize=0x540;
-pub const TREE_SELECTED_ID:usize=0x26b0;pub const TREE_SELECTED_LEVEL:usize=0x26b8;pub const TREE_MODE:usize=0x26d0;
-pub const TREE_SCROLL_Y:usize=0x2754;pub const TREE_SCROLL_X:usize=0x2758;
-// 1 while KatSmithy's material selection dialog (forge/upgrade) covers the tree.
-pub const TREE_DIALOG:usize=0x30ec;pub const TREE_END:usize=0x30f0;
-pub const TREE_LINES:u16=160;pub const TREE_MAX_ROWS:u32=0xaa;
+// each line (by line ID), displayed rows with their row position, height and line ID,
+// then the selection, view mode, scroll and the material dialog flag. KatSmithy 1.5.0
+// doubled its capacities: more lines and rows, so everything after the first table
+// moved. Both layouts are accepted; `tab` (Tree / Forge / Upgrade) exists from 1.5.0.
+#[derive(Debug,PartialEq)]
+pub struct TreeLayout{
+ pub columns:usize,pub line_col:usize,pub line_row:usize,pub rows:usize,pub row_pos:usize,pub row_height:usize,pub row_line:usize,
+ pub selected_id:usize,pub selected_level:usize,pub mode:usize,pub scroll_y:usize,pub scroll_x:usize,
+ // 1 while KatSmithy's material selection dialog (forge/upgrade) covers the tree.
+ pub dialog:usize,pub end:usize,pub lines:u16,pub max_rows:u32,pub tab:Option<usize>,
+ // 1.5.0: what it drew this frame (tab buttons, tree nodes, bottom buttons), 0x18 bytes
+ // each: u32 (value << 16 | type), u32 level, then the rectangle. Type 1 is a node
+ // (value = line ID). The Forge and Upgrade tabs leave out nodes they hide.
+ pub hits:Option<(usize,usize)>,
+}
+/// Index 0: up to KatSmithy 1.4. Index 1: KatSmithy 1.5.0 (measured in a running game).
+pub const TREE_LAYOUTS:[TreeLayout;2]=[
+ TreeLayout{columns:0x10,line_col:0x14,line_row:0x154,rows:0x294,row_pos:0x298,row_height:0x3ec,row_line:0x540,
+  selected_id:0x26b0,selected_level:0x26b8,mode:0x26d0,scroll_y:0x2754,scroll_x:0x2758,dialog:0x30ec,end:0x30f0,lines:160,max_rows:0xaa,tab:None,hits:None},
+ TreeLayout{columns:0x10,line_col:0x14,line_row:0x254,rows:0x494,row_pos:0x498,row_height:0x6ec,row_line:0x940,
+  selected_id:0x449c,selected_level:0x44b8,mode:0x44d0,scroll_y:0x4554,scroll_x:0x4558,dialog:0x5698,end:0xf158,lines:288,max_rows:0x12a,tab:Some(0xf154),hits:Some((0x8ed0,0xeed0))},
+];
 #[derive(Clone,Copy,PartialEq,Debug)]
-pub struct TreeState{pub at:usize,pub columns:i32,pub rows:u32}
-/// The weapon tree at `at`: rows start at 0 and grow by 3-8 half cells, each row's
-/// line is unique, and that line's own row and column agree with the row table.
-pub fn tree_at(m:&[u8],at:usize)->Option<TreeState>{
- if at.checked_add(TREE_END)?>m.len(){return None}
- let rows=u32_at(m,at+TREE_ROWS)?;let columns=u32_at(m,at+TREE_COLUMNS)? as i32;
- if !(1..=TREE_MAX_ROWS).contains(&rows)||!(1..=64).contains(&columns){return None}
- let mut prev=-1i32;let mut seen=[0u64;3];
+pub struct TreeState{pub at:usize,pub columns:i32,pub rows:u32,pub layout:u8}
+impl TreeState{pub fn layout(&self)->&'static TreeLayout{&TREE_LAYOUTS[self.layout as usize]}}
+/// The weapon tree at `at` in `layout`: rows start at 0 and grow by 3-8 half cells,
+/// each row's line is unique, and that line's own row and column agree with the row table.
+pub fn tree_at(m:&[u8],at:usize,layout:u8)->Option<TreeState>{
+ let l=TREE_LAYOUTS.get(layout as usize)?;
+ if at.checked_add(l.end)?>m.len(){return None}
+ let rows=u32_at(m,at+l.rows)?;let columns=u32_at(m,at+l.columns)? as i32;
+ if !(1..=l.max_rows).contains(&rows)||!(1..=64).contains(&columns){return None}
+ let mut prev=-1i32;let mut seen=[0u64;5];
  for i in 0..rows as usize{
-  let pos=i16_at(m,at+TREE_ROW_POS+2*i)? as i32;let height=i16_at(m,at+TREE_ROW_HEIGHT+2*i)?;let line=i16_at(m,at+TREE_ROW_LINE+2*i)?;
+  let pos=i16_at(m,at+l.row_pos+2*i)? as i32;let height=i16_at(m,at+l.row_height+2*i)?;let line=i16_at(m,at+l.row_line+2*i)?;
   if (i==0&&pos!=0)||(i>0&&!(3..=8).contains(&(pos-prev)))||!(1..=4).contains(&height){return None}
-  if !(0..TREE_LINES as i16).contains(&line){return None}let line=line as usize;
+  if !(0..l.lines as i16).contains(&line){return None}let line=line as usize;
   if seen[line/64]>>(line%64)&1!=0{return None}seen[line/64]|=1<<(line%64);
-  if i16_at(m,at+TREE_LINE_ROW+2*line)? as i32!=pos{return None}
-  let col=i16_at(m,at+TREE_LINE_COL+2*line)? as i32;if !(0..columns).contains(&col){return None}
+  if i16_at(m,at+l.line_row+2*line)? as i32!=pos{return None}
+  let col=i16_at(m,at+l.line_col+2*line)? as i32;if !(0..columns).contains(&col){return None}
   prev=pos;
  }
- Some(TreeState{at,columns,rows})
+ Some(TreeState{at,columns,rows,layout})
 }
-pub fn find_tree(m:&[u8])->Option<usize>{(0..m.len().saturating_sub(TREE_END)).step_by(4).find(|&at|tree_at(m,at).is_some())}
-/// Per-frame read of a tree already found by `tree_at`: its shape only.
-pub fn tree_live(m:&[u8],at:usize)->Option<TreeState>{
- if at.checked_add(TREE_END)?>m.len(){return None}
- let rows=u32_at(m,at+TREE_ROWS)?;let columns=u32_at(m,at+TREE_COLUMNS)? as i32;
- ((1..=TREE_MAX_ROWS).contains(&rows)&&(1..=64).contains(&columns)&&i16_at(m,at+TREE_ROW_POS)?==0).then_some(TreeState{at,columns,rows})
+/// The first tree record in either layout, as its offset with the layout index in
+/// the low two bits (offsets are word aligned).
+pub fn find_tree(m:&[u8])->Option<usize>{
+ (0..m.len()).step_by(4).find_map(|at|(0..TREE_LAYOUTS.len() as u8).find(|&l|tree_at(m,at,l).is_some()).map(|l|at|l as usize))
+}
+/// Per-frame read of a tree already found by `find_tree` (offset | layout): its shape only.
+pub fn tree_live(m:&[u8],found:usize)->Option<TreeState>{
+ let (at,layout)=(found&!3,(found&3) as u8);let l=TREE_LAYOUTS.get(layout as usize)?;
+ if at.checked_add(l.end)?>m.len(){return None}
+ let rows=u32_at(m,at+l.rows)?;let columns=u32_at(m,at+l.columns)? as i32;
+ ((1..=l.max_rows).contains(&rows)&&(1..=64).contains(&columns)&&i16_at(m,at+l.row_pos)?==0).then_some(TreeState{at,columns,rows,layout})
 }
 /// Displayed line `i` as (line id, first column, row).
 pub fn tree_line(m:&[u8],t:TreeState,i:u32)->Option<(u16,i16,i16)>{
- if i>=t.rows{return None}let line=i16_at(m,t.at+TREE_ROW_LINE+2*i as usize)? as u16;
- Some((line,i16_at(m,t.at+TREE_LINE_COL+2*line as usize)?,i16_at(m,t.at+TREE_LINE_ROW+2*line as usize)?))
+ let l=t.layout();if i>=t.rows{return None}let line=i16_at(m,t.at+l.row_line+2*i as usize)? as u16;
+ Some((line,i16_at(m,t.at+l.line_col+2*line as usize)?,i16_at(m,t.at+l.line_row+2*line as usize)?))
 }
 pub fn tree_u32(m:&[u8],t:TreeState,field:usize)->Option<u32>{u32_at(m,t.at+field)}
+pub const TREE_HIT_SIZE:usize=0x18;pub const TREE_HIT_MAX:u32=1024;
+/// Whether the node (line, level) is drawn now. Layouts without a hit list draw every node.
+pub fn tree_node_drawn(m:&[u8],t:TreeState,line:u16,level:u32)->bool{
+ let Some((list,count))=t.layout().hits else{return true};
+ let Some(count)=u32_at(m,t.at+count) else{return false};
+ (0..count.min(TREE_HIT_MAX) as usize).any(|i|{let at=t.at+list+i*TREE_HIT_SIZE;
+  u32_at(m,at)==Some(u32::from(line)<<16|1)&&u32_at(m,at+4)==Some(level)})
+}
 
 // Tree panel in KatSmithy's 1280x720 space: cells are 54 units wide, rows 18
 // units per half cell, icons 32 units, all times the panel scale.
@@ -420,19 +449,41 @@ mod tests{
   let m=build(&TREE_CONSTANTS[..6]);assert_eq!(renderer(&m,0x400).map(|r|r.constants),Some(false));
   assert_eq!(renderer(&[0u8;64],32),None);
  }
- #[test]fn tree_record_is_found_by_content_anywhere(){
+ #[test]fn tree_record_is_found_by_content_anywhere_in_either_layout(){
+  for layout in [0u8,1]{let l=&TREE_LAYOUTS[layout as usize];
   for at in [0x40usize,0x1000]{
-   let mut m=vec![0u8;at+TREE_END+0x40];
-   w32(&mut m,at+TREE_COLUMNS,16);w32(&mut m,at+TREE_ROWS,4);
+   let mut m=vec![0u8;at+l.end+0x40];
+   w32(&mut m,at+l.columns,16);w32(&mut m,at+l.rows,4);
    for (i,(pos,line,col)) in [(0u16,1u16,0u16),(3,6,3),(6,7,3),(9,3,4)].into_iter().enumerate(){
-    w16(&mut m,at+TREE_ROW_POS+2*i,pos);w16(&mut m,at+TREE_ROW_HEIGHT+2*i,1);w16(&mut m,at+TREE_ROW_LINE+2*i,line);
-    w16(&mut m,at+TREE_LINE_ROW+2*line as usize,pos);w16(&mut m,at+TREE_LINE_COL+2*line as usize,col);
+    w16(&mut m,at+l.row_pos+2*i,pos);w16(&mut m,at+l.row_height+2*i,1);w16(&mut m,at+l.row_line+2*i,line);
+    w16(&mut m,at+l.line_row+2*line as usize,pos);w16(&mut m,at+l.line_col+2*line as usize,col);
    }
-   assert_eq!(find_tree(&m),Some(at));let t=tree_at(&m,at).unwrap();
+   let found=find_tree(&m).unwrap();assert_eq!((found&!3,found&3),(at,layout as usize));
+   let t=tree_live(&m,found).unwrap();assert_eq!(t,tree_at(&m,at,layout).unwrap());
    assert_eq!(tree_line(&m,t,3),Some((3,4,9)));
    // A line whose own row disagrees with the row table is not a tree.
-   w16(&mut m,at+TREE_LINE_ROW+2*3,10);assert!(tree_at(&m,at).is_none());
-  }
+   w16(&mut m,at+l.line_row+2*3,10);assert!(tree_at(&m,at,layout).is_none());
+  }}
+ }
+ #[test]fn hidden_nodes_get_no_pin_on_layouts_with_a_hit_list(){
+  let l=&TREE_LAYOUTS[1];let (list,count)=l.hits.unwrap();
+  let mut m=vec![0u8;l.end+0x40];
+  // Two tab buttons, then node (line 3, level 1).
+  w32(&mut m,list,2);w32(&mut m,list+TREE_HIT_SIZE,1<<16|2);w32(&mut m,list+2*TREE_HIT_SIZE,3<<16|1);w32(&mut m,list+2*TREE_HIT_SIZE+4,1);
+  // A stale entry past the count is not drawn.
+  w32(&mut m,list+3*TREE_HIT_SIZE,1<<16|1);w32(&mut m,list+3*TREE_HIT_SIZE+4,5);
+  w32(&mut m,count,3);
+  let t=TreeState{at:0,columns:4,rows:1,layout:1};
+  assert!(tree_node_drawn(&m,t,3,1));assert!(!tree_node_drawn(&m,t,3,2));assert!(!tree_node_drawn(&m,t,1,5));
+  assert!(tree_node_drawn(&m,TreeState{layout:0,..t},1,5));
+ }
+ #[test]fn katsmithy_150_layout_follows_its_doubled_tables(){
+  let l=&TREE_LAYOUTS[1];
+  assert_eq!(l.line_row,l.line_col+2*l.lines as usize);assert_eq!(l.rows,l.line_row+2*l.lines as usize);
+  assert_eq!(l.row_pos,l.rows+4);assert_eq!(l.row_height,l.row_pos+2*l.max_rows as usize);assert_eq!(l.row_line,l.row_height+2*l.max_rows as usize);
+  // The fields after the tables keep their order and spacing from 1.4, 0x14 further from the selection.
+  let o=&TREE_LAYOUTS[0];
+  for (new,old) in [(l.mode,o.mode),(l.scroll_y,o.scroll_y),(l.scroll_x,o.scroll_x)]{assert_eq!(new-l.selected_id,old-o.selected_id+0x14);}
  }
  #[test]fn stick_is_zeroed_while_owned_and_until_it_recenters(){
   let mut latch=false;
@@ -440,5 +491,28 @@ mod tests{
   assert!(stick_blocked(0.,0.9,false,&mut latch));
   assert!(!stick_blocked(0.,0.1,false,&mut latch));
   assert!(!stick_blocked(0.,0.9,false,&mut latch));
+ }
+}
+
+/// A click consumed by the overlay cannot reach the tree on the closing frame
+/// or while the same physical mouse button remains held.
+pub fn mouse_buttons(raw:u32,owned:bool,latch:&mut u32)->u32{
+ *latch&=raw;
+ if owned{*latch|=raw;0}else{raw&!*latch}
+}
+#[cfg(test)]mod mouse_tests{
+ use super::*;
+ #[test]fn closing_right_click_stays_consumed_until_release(){
+  let mut latch=0;
+  assert_eq!(mouse_buttons(4,true,&mut latch),0);
+  assert_eq!(mouse_buttons(4,false,&mut latch),0);
+  assert_eq!(mouse_buttons(4,false,&mut latch),0);
+  assert_eq!(mouse_buttons(0,false,&mut latch),0);
+  assert_eq!(mouse_buttons(4,false,&mut latch),4);
+ }
+ #[test]fn unrelated_new_click_passes_after_ownership_ends(){
+  let mut latch=0;mouse_buttons(4,true,&mut latch);
+  assert_eq!(mouse_buttons(5,false,&mut latch),1);
+  assert_eq!(mouse_buttons(0,false,&mut latch),0);
  }
 }

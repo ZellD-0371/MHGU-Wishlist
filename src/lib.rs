@@ -1,10 +1,10 @@
 #![no_std]
 extern crate alloc;
 mod name_data;mod language;mod language_pack;mod language_ui;mod description_file;
-mod diagnostics;mod inventory;mod sorting;mod atlas;mod text_cache;mod material_cache;mod font_validation;
+mod quest_badge_model;mod quest_materials;mod quest_badges;mod diagnostics;mod inventory;mod sorting;mod atlas;mod text_cache;mod material_cache;mod font_validation;
 mod binding_model;mod bindings;
 mod hook_guard;mod button_prompts;mod menu_buttons;mod input_chain;mod native_modal;
-mod hud_layout;mod skill_view;mod katsmithy_model;mod katsmithy;mod sksim_model;mod sksim;mod kbm;
+mod hud_layout;mod skill_view;mod katsmithy_search;mod katsmithy_model;mod katsmithy;mod sksim_model;mod sksim;mod kbm;
 mod model;#[allow(dead_code)] mod generated; // full extracted tables; only some are read
 mod locales;mod native;mod controller;mod storage;mod ui;mod smithy;mod equipment;mod navigation;mod sound;mod icons;mod interaction;mod session;mod profiles;mod text_blob;mod text_data;mod presentation;mod game_menu;mod purplelib;mod sound_cues;mod notifications;mod badge_model;mod native_badges;mod completed;
 use core::{cell::UnsafeCell,sync::atomic::{AtomicBool,Ordering},ffi::c_void};
@@ -13,12 +13,12 @@ use forge::log::prelude::{info,error};
 #[derive(Clone,Copy)]
 struct Target{owner:u32,recipe:Recipe,cost:u32}
 struct State{
- pending_preferences:Option<List>,sort:Option<sorting::Dialog>,settings_loaded:bool,settings_notice:u8,profile:Option<usize>,game_ready:bool,base:u32,installed:bool,input_ready:bool,list:List,loaded:bool,mode:u8,selected:usize,tab:usize,aggregate:interaction::AggregateFocus,preview_clock:f32,
+ quest_scroll:quest_badge_model::Scroll,quest_materials:quest_materials::Cache,pending_preferences:Option<List>,sort:Option<sorting::Dialog>,settings_loaded:bool,settings_notice:u8,profile:Option<usize>,game_ready:bool,base:u32,installed:bool,input_ready:bool,list:List,loaded:bool,mode:u8,selected:usize,tab:usize,aggregate:interaction::AggregateFocus,preview_clock:f32,
  target:Option<Target>,frozen:Option<Recipe>,stock:[u32;4096],stock_ready:bool,material_cache:material_cache::Cache,
  notices:notifications::Queue,notice_demo:Option<notifications::Demo>,notice_test_case:usize,cooldown:u32,timer:f32,events:u32,status:u8,preview:bool,preview_panel:usize,detail_page:usize,frozen_cost:u32,focus:interaction::Focus,
 }
 impl State{
- fn new()->Self{Self{pending_preferences:None,sort:None,settings_loaded:false,settings_notice:0,profile:None,game_ready:false,base:0,installed:false,input_ready:false,list:List::default(),loaded:false,mode:0,selected:0,tab:0,aggregate:interaction::AggregateFocus::default(),preview_clock:0.,target:None,frozen:None,stock:[0;4096],stock_ready:false,material_cache:material_cache::Cache::default(),notices:notifications::Queue::default(),notice_demo:None,notice_test_case:2,cooldown:180,timer:0.,events:0,status:0,preview:false,preview_panel:0,detail_page:0,frozen_cost:0,focus:interaction::Focus::default()}}
+ fn new()->Self{Self{quest_scroll:quest_badge_model::Scroll::default(),quest_materials:quest_materials::Cache::default(),pending_preferences:None,sort:None,settings_loaded:false,settings_notice:0,profile:None,game_ready:false,base:0,installed:false,input_ready:false,list:List::default(),loaded:false,mode:0,selected:0,tab:0,aggregate:interaction::AggregateFocus::default(),preview_clock:0.,target:None,frozen:None,stock:[0;4096],stock_ready:false,material_cache:material_cache::Cache::default(),notices:notifications::Queue::default(),notice_demo:None,notice_test_case:2,cooldown:180,timer:0.,events:0,status:0,preview:false,preview_panel:0,detail_page:0,frozen_cost:0,focus:interaction::Focus::default()}}
  fn capture(&mut self,owner:u32,recipe:Recipe,cost:u32){if self.mode==0&&recipe.valid(){self.target=Some(Target{owner,recipe,cost});}}
  fn active(&self)->Option<Recipe>{
   if katsmithy::tree_dialog(self.base){return None}
@@ -33,7 +33,7 @@ impl State{
  fn at_smithy(&self)->bool{!katsmithy::tree_dialog(self.base)&&(self.active().is_some()||native_badges::smithy_visible(self.base))}
  fn open(&mut self,register:bool){
   if !self.game_ready||self.profile.is_none()||!self.loaded||!self.input_ready||crate::language::current().is_none(){return}
-  self.sort=None;self.focus=interaction::Focus::default();self.preview=false;self.notice_demo=None;self.tab=0;self.aggregate=interaction::AggregateFocus::default();self.preview_clock=0.;self.status=0;self.detail_page=0;sound::request_open(self.list.open_sound);
+  self.quest_scroll.reset();self.sort=None;self.focus=interaction::Focus::default();self.preview=false;self.notice_demo=None;self.tab=0;self.aggregate=interaction::AggregateFocus::default();self.preview_clock=0.;self.status=0;self.detail_page=0;sound::request_open(self.list.open_sound);
   if register{if let Some(r)=self.active(){self.frozen=Some(r);self.frozen_cost=self.target.filter(|t|t.recipe==r).map_or_else(||equipment::cost(r),|t|t.cost);if let Some(slot)=self.list.registered(r){self.mode=8;self.selected=slot;self.focus.yes=false;}else{self.mode=1;self.selected=self.list.slots.iter().position(Option::is_none).unwrap_or(0)}}}else{self.frozen=None;self.mode=2;self.selected=0;}
  }
 }
@@ -70,6 +70,7 @@ pub extern "C" fn forge_onUpdate(dt:f32){
  let (base,installed)=STATE.with(|s|(s.base,s.installed));if !installed{return}
  // Every plugin is loaded and bound before the first update; wrap KatSmithy's
  // input imports once, then keep its view of ownership current each frame.
+ katsmithy::begin_frame();
  katsmithy::install_once();
  sksim::discover_once();
  game_menu::update_help();
@@ -89,6 +90,7 @@ pub extern "C" fn forge_onUpdate(dt:f32){
   info!("[wishlist-input] input ready changed to {}",now_ready);
  }
  sound::update(base);
+ quest_badges::update_pages(base,|quest|STATE.with(|s|ui::quest_extra_pages(s,quest)));
  purplelib::update();
  if !STATE.with(|s|s.settings_loaded){let mut bytes=[0;storage::MAX_BYTES];match storage::WISHLIST.read(&mut bytes){Ok(text)=>match List::decode(text){Ok(list)=>STATE.with(|s|{s.list.copy_preferences(&list);s.settings_loaded=true;}),Err(())=>diagnostics::event(3,"settings INI parse failed",[0,0,0,0])},Err(e)=>diagnostics::event(3,"settings INI read failed (error enum)",[1,e as u32,0,0])}}
  let logging=STATE.with(|s|s.list.diagnostics);diagnostics::set_enabled(logging);diagnostics::tick(dt);
@@ -110,7 +112,7 @@ pub extern "C" fn forge_onUpdate(dt:f32){
  });
  if let Some(base)=poll{let mut stock=[0;4096];let valid=native::inventory(base,&mut stock);STATE.with(|s|{
   let material=if s.mode==2&&s.tab==1{s.material_cache.refresh(&s.list,&s.stock,s.stock_ready,generated::PROVISIONS);s.material_cache.totals().get(s.aggregate.material).map(|m|m.id)}else{None};
-  if valid!=s.stock_ready||(valid&&s.stock!=stock){s.material_cache.inventory_changed();}
+  if valid!=s.stock_ready||(valid&&s.stock!=stock){s.material_cache.inventory_changed();s.quest_materials.invalidate();}
   let progress=if s.stock_ready&&valid{s.list.progress(&s.stock,&stock)}else{alloc::vec::Vec::new()};
   s.stock_ready=valid;if valid{s.stock=stock;if let Some(id)=material{s.material_cache.refresh(&s.list,&s.stock,true,generated::PROVISIONS);if let Some(index)=s.material_cache.totals().iter().position(|m|m.id==id){s.aggregate.material=index;}}let events=s.list.poll(&stock,generated::PROVISIONS);
    for &(i,material,have,need) in &progress{if events.contains(&i){continue}if let Some(e)=s.list.slots[i]{s.notices.push_progress(e.recipe,notifications::Progress{material,have,need});}}

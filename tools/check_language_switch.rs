@@ -25,7 +25,7 @@ pub mod imgui{
  impl ImFont{pub fn load(_: &std::ffi::CStr)->Option<Self>{assert_eq!(super::LOCKED.load(super::Ordering::SeqCst),0,"font loaded inside a frame");super::FONT_LOADS.fetch_add(1,super::Ordering::SeqCst);Some(Self)}}
 }
 mod icons{pub fn init(){}}
-mod ui{pub(crate)static mut FONT:Option<crate::imgui::ImFont>=None;}
+mod ui{pub(crate)static mut FONT:Option<crate::imgui::ImFont>=None;pub static SAVES:super::AtomicUsize=super::AtomicUsize::new(0);pub fn save_preferences()->bool{SAVES.fetch_add(1,super::Ordering::SeqCst);true}}
 pub mod sys{pub mod imgui{
  pub type ImGuiID=u32;pub enum ImGuiContext{}pub enum ImGuiContextHookType{NewFramePre}
  pub struct ImGuiContextHook{pub HookId:u32,pub Type:ImGuiContextHookType,pub Owner:u32,pub Callback:Option<unsafe extern "C" fn(*mut ImGuiContext,*mut ImGuiContextHook)>,pub UserData:*mut std::ffi::c_void}
@@ -58,8 +58,10 @@ mod language{
   LOCKED.store(1,Ordering::SeqCst);language_ui::request(&next);assert_eq!(STATE.with(|s|s.list.language),4);assert_eq!(language::current(),Some(4));
   sys::imgui::frame();assert_eq!(STATE.with(|s|s.list.language),4);assert_eq!(STATE.with(|s|s.settings_notice),4);assert_eq!(language::text(4),old_owned);
  }
+ assert_eq!(ui::SAVES.load(Ordering::SeqCst),0,"failed language loads must not save");
  FAULT.store(99,Ordering::SeqCst);
  for lang in (0..9).cycle().take(90){let mut next=STATE.with(|s|s.list.clone());next.language=lang;language_ui::request(&next);sys::imgui::frame();assert_eq!(STATE.with(|s|s.list.language),lang);assert_eq!(language::current(),Some(lang));assert!(STATE.with(|s|s.list.slots[7].is_some()));}
+ assert_eq!(ui::SAVES.load(Ordering::SeqCst),90,"each accepted settings change saves once");
  assert_eq!(FONT_LOADS.load(Ordering::SeqCst),1,"language changes must not append fonts");let mut korean=STATE.with(|s|s.list.clone());korean.language=4;language_ui::request(&korean);sys::imgui::frame();assert_eq!(language::text(4),old_owned);
  // Cancelling a queued language change by restoring current preferences must discard it.
  let current=STATE.with(|s|s.list.clone());let mut other=current.clone();other.language=(current.language+1)%9;language_ui::request(&other);language_ui::request(&current);sys::imgui::frame();assert_eq!(language::current(),Some(current.language));

@@ -5,6 +5,8 @@ $taskOldPath = $env:PATH
 $taskOldOffline = $env:CARGO_NET_OFFLINE
 $taskOldLinker = $env:CARGO_TARGET_ARMV7A_NONE_EABI_LINKER
 try {
+ & python tools/prepare_quest_materials.py --check
+ if ($LASTEXITCODE -ne 0) { throw 'Quest material resources are stale' }
     & python './tools/sync_korean.py'
     if ($LASTEXITCODE -ne 0) { throw 'Korean canonical inputs are stale' }
     & python './tools/prepare_names.py'

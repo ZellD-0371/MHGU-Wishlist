@@ -14,7 +14,7 @@ fn switch(next:&List,edited:bool)->bool{
 }
 unsafe extern "C" fn before_frame(_ctx:*mut sys::ImGuiContext,_hook:*mut sys::ImGuiContextHook){
  let request=STATE.with(|s|{if let Some(next)=s.pending_preferences.take(){return Some((next,true))}let active=crate::language::current();if active.is_some()&&active!=Some(s.list.language){Some((s.list.clone(),false))}else{None}});
- if let Some((next,edited))=request{if !switch(&next,edited){if let Some(active)=crate::language::current(){STATE.with(|s|s.list.language=active);}}}
+ if let Some((next,edited))=request{if switch(&next,edited){if edited{crate::ui::save_preferences();}}else{if let Some(active)=crate::language::current(){STATE.with(|s|s.list.language=active);}}}
 }
 pub fn init(){unsafe{
  let ctx=sys::igGetCurrentContext();if ctx==CONTEXT&&HOOK!=0{return}CONTEXT=ctx;HOOK=0;FONT=None;crate::language::reset();crate::icons::init();
@@ -27,5 +27,5 @@ pub fn init(){unsafe{
 }}
 pub fn request(next:&List){
  if crate::language::current()!=Some(next.language){if unsafe{HOOK}==0{fail();return}STATE.with(|s|s.pending_preferences=Some(next.clone()));}
- else{STATE.with(|s|{s.pending_preferences=None;s.list.copy_preferences(next);s.settings_loaded=true;s.settings_notice=1;});}
+ else{STATE.with(|s|{s.pending_preferences=None;s.list.copy_preferences(next);s.settings_loaded=true;s.settings_notice=1;});crate::ui::save_preferences();}
 }

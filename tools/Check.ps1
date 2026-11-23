@@ -2,6 +2,8 @@ param([switch]$UIRegression, [string]$UiPython = "python")
 $ErrorActionPreference = 'Stop'
 Push-Location (Join-Path $PSScriptRoot '..')
 try {
+ & python tools/prepare_quest_materials.py --check
+ if ($LASTEXITCODE -ne 0) { throw 'Quest material resources are stale' }
  & python tools/prepare_low_memory.py --check
  if ($LASTEXITCODE -ne 0) { throw 'LowMemory atlas is stale or invalid' }
  & python tools/prepare_hd_atlas.py --check

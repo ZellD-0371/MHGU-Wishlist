@@ -53,3 +53,23 @@ pub fn current(base:u32)->Option<HudSize>{
 }
 #[cfg(not(target_arch="arm"))]
 pub fn current(_:u32)->Option<HudSize>{None}
+
+/// Mirror the native right anchor for content attached to the left HUD panel.
+pub fn left_top(width:f32,height:f32,hud:Option<HudSize>)->Option<crate::presentation::Viewport>{
+ let mut v=right_top(width,height,hud)?;v.ox=width-1280.*v.scale-v.ox;Some(v)
+}
+
+/// Content attached to a bottom-anchored game panel on the left (the quest counter's
+/// detail). The game's UI space is 1280 wide and as tall as the picture allows
+/// (800 at 16:10); such panels keep their distance to the picture's bottom, so on
+/// pictures taller than 16:9 they sit lower than the 720-unit layout says.
+pub fn left_bottom(width:f32,height:f32,hud:Option<HudSize>)->Option<crate::presentation::Viewport>{
+ let mut v=left_top(width,height,hud)?;
+ if let Some(HudSize{render_width:rw,render_height:rh,..})=hud{
+  if (64..=16384).contains(&rw)&&(64..=16384).contains(&rh){
+   let aspect=rw as f32/rh as f32;
+   if aspect<16./9.-0.01{let ph=height.min(width/aspect);v.oy=(height-ph)*0.5+ph-720.*v.scale;}
+  }
+ }
+ Some(v)
+}

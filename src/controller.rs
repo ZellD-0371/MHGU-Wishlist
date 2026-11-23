@@ -42,7 +42,7 @@ unsafe fn filter(index:usize,state:u32,id:u32){
   let open=s.mode!=0;
   if !menu&&!capture&&s.game_ready&&s.profile.is_some()&&s.installed&&s.input_ready&&s.loaded{
    if !open{
-    if pressed&1!=0&&(s.at_smithy()||crate::game_menu::visible(s.base)){s.events|=PAD_LIST;}
+    if pressed&1!=0&&s.at_smithy(){s.events|=PAD_LIST;}
     else if pressed&2!=0&&s.active().is_some(){s.events|=PAD_REGISTER;}
    }
   }

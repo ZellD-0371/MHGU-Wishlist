@@ -28,6 +28,7 @@ extern crate alloc;
 #[path="__SRC__/sorting.rs"]mod sorting;
 #[path="__SRC__/model.rs"]mod model;
 #[path="__SRC__/badge_model.rs"]mod badge_model;
+#[path="__SRC__/quest_badge_model.rs"]mod quest_badge_model;
 macro_rules! original {($($args:expr),*)=>{0u32};}
 mod native{
  use std::{collections::BTreeMap,sync::{Mutex,OnceLock}};
@@ -60,6 +61,22 @@ tests=r"""
  }
  fn list()->List{let mut l=List::default();l.insert(0,Recipe{kind:9,id:51,level:5,materials:[Material{id:1,count:1},Material::default(),Material::default(),Material::default()],..Recipe::default()}).unwrap();l}
  fn start(){clear();crate::native::reset();}
+ #[test]fn quest_anchor_disappears_when_retained_row_or_list_group_is_hidden(){
+  start();use crate::native::put;
+  let (layout,table,node,objects,texture,root)=(0x100000,0x110000,0x120000,0x130000,0x140000,0x150000);
+  put(layout+0x298,24);put(layout+0xf8,table);put(table+16*4,node);
+  put(node+0x54,0x0100001b);put(node+0xd8,objects);put(node+0x68,root);
+  put(objects+4,texture);put(texture+0x54,0x40001);
+  // Live GUI has image parents separate from the row-group chain. They do not
+  // carry group visibility bit 3 even while the row is fully visible.
+  put(texture+0x68,0x160000);put(0x160000+0x54,0x02000001);put(0x160000+0x68,0x170000);put(0x170000+0x54,0x02000001);
+  put(texture+0x40,734_f32.to_bits());put(texture+0x44,202_f32.to_bits());put(root+0x54,0x0100000b);
+  assert!(quest_anchor(layout,16).is_some());
+  // Both changes leave allocation/ID/coordinates intact, as on the level list.
+  put(node+0x54,0x01000013);assert!(quest_anchor(layout,16).is_none());
+  put(node+0x54,0x0100001b);put(root+0x54,0x01000003);assert!(quest_anchor(layout,16).is_none());
+  put(root+0x54,0x0100000b);assert!(quest_anchor(layout,16).is_some());
+ }
  #[test]fn first_grid_visit_does_not_require_opening_recipe_details(){
   start();fixture(0x100000,0x110000);assert!(markers(&list(),BASE).is_empty());
   open(0x100000);assert_eq!(markers(&list(),BASE).len(),1);assert!(selected_registered(&list(),BASE).is_some());

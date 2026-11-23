@@ -138,3 +138,26 @@ pub fn selected_registered(list:&List,base:u32)->Option<(u32,Recipe)>{
 
 pub fn smithy_visible(base:u32)->bool{grid_owner(base).is_some()||LISTS.iter().any(|cached|{let owner=cached.load(Ordering::Acquire);visible(owner,base)&&list_parent(owner,base).is_some()})}
 
+
+/// The row's first texture includes the game's selection animation and position.
+pub fn quest_anchor(layout:u32,group:u32)->Option<Marker>{
+ if !(16..24).contains(&group){return None}
+ let obj=object(layout,group,1)?;
+ if !quest_group_drawn(layout,group){return None}
+ let x=unsafe{float(obj+0x40)};let y=unsafe{float(obj+0x44)};
+ (x.is_finite()&&y.is_finite()&&(-64. ..=1344.).contains(&x)&&(-64. ..=784.).contains(&y)).then_some(Marker{x,y})
+}
+
+fn quest_group_drawn(layout:u32,group:u32)->bool{
+ if !valid(layout){return false}
+ let count=unsafe{rd(layout+0x298)};if count>512||group>=count{return false}
+ let table=unsafe{rd(layout+0xf8)};if !valid(table){return false}
+ let mut parent=unsafe{rd(table+group*4)};
+ for _ in 0..32{if parent==0{return true}if !valid(parent)||!crate::quest_badge_model::group_drawn(unsafe{rd(parent+0x54)}){return false}parent=unsafe{rd(parent+0x68)};}
+ false
+}
+pub fn quest_detail_anchor(layout:u32)->Option<Marker>{
+ if !quest_group_drawn(layout,3){return None}
+ let obj=object(layout,3,1)?;let x=unsafe{float(obj+0x40)};let y=unsafe{float(obj+0x44)};
+ (x.is_finite()&&y.is_finite()&&(0. ..=640.).contains(&x)&&(100. ..=720.).contains(&y)).then_some(Marker{x,y:y-94.})
+}

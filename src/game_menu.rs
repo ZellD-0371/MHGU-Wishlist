@@ -173,24 +173,32 @@ mod native{
  const HELP_ID:u32=0x7ff8;
  static HELP_OURS:AtomicBool=AtomicBool::new(false);
  static HELP_INSTALLED:AtomicBool=AtomicBool::new(false);
- static HELP_LAST:[AtomicU32;6]=[const{AtomicU32::new(0)};6];
+ // The help function is variadic: when its 6th argument is 1 it reads format values
+ // from the caller's stack right after it (sp+0x30 inside, the 7th word on) and hands
+ // them to +0x6429A4. The Smithy (+0x708204) passes one such value. The hook therefore
+ // takes the next stack words too and passes them on in the same places, so the
+ // original sees exactly the caller's arguments (otherwise it read our frame and built
+ // garbage text every call, which piled up over KatSmithy's Smithy).
+ const HELP_WORDS:usize=6+HELP_EXTRA;const HELP_EXTRA:usize=8;
+ static HELP_LAST:[AtomicU32;HELP_WORDS]=[const{AtomicU32::new(0)};HELP_WORDS];
  static HELP_SEEN:AtomicBool=AtomicBool::new(false);
  static mut HELP_TEXT:alloc::vec::Vec<u8>=alloc::vec::Vec::new();
  static mut HELP_WANT:Option<alloc::string::String>=None;
  static mut HELP_SHOWN:Option<alloc::string::String>=None;
  #[forge::hook(offset=0x65e5bc)]
- fn help(flags:u32,kind:u32,file:u32,id:u32,a:u32,b:u32)->u32{
-  if HELP_CALLING.load(Ordering::Acquire){return original!(flags,kind,file,id,a,b)}
-  for (slot,v) in HELP_LAST.iter().zip([flags,kind,file,id,a,b]){slot.store(v,Ordering::Relaxed);}
+ fn help(flags:u32,kind:u32,file:u32,id:u32,a:u32,b:u32,x0:u32,x1:u32,x2:u32,x3:u32,x4:u32,x5:u32,x6:u32,x7:u32)->u32{
+  if HELP_CALLING.load(Ordering::Acquire){return original!(flags,kind,file,id,a,b,x0,x1,x2,x3,x4,x5,x6,x7)}
+  for (slot,v) in HELP_LAST.iter().zip([flags,kind,file,id,a,b,x0,x1,x2,x3,x4,x5,x6,x7]){slot.store(v,Ordering::Relaxed);}
   HELP_SEEN.store(true,Ordering::Release);
   // While ours is shown, the game's own updates wait for our window to close.
   if HELP_OURS.load(Ordering::Acquire){return 0}
-  original!(flags,kind,file,id,a,b)
+  original!(flags,kind,file,id,a,b,x0,x1,x2,x3,x4,x5,x6,x7)
  }
  static HELP_CALLING:AtomicBool=AtomicBool::new(false);
- fn call_help(args:[u32;6]){
-  let f:extern "C" fn(u32,u32,u32,u32,u32,u32)->u32=unsafe{core::mem::transmute(forge::mem::text_addr()+0x65e5bc)};
-  HELP_CALLING.store(true,Ordering::Release);f(args[0],args[1],args[2],args[3],args[4],args[5]);HELP_CALLING.store(false,Ordering::Release);
+ fn call_help(a:[u32;HELP_WORDS]){
+  type Help=extern "C" fn(u32,u32,u32,u32,u32,u32,u32,u32,u32,u32,u32,u32,u32,u32)->u32;
+  let f:Help=unsafe{core::mem::transmute(forge::mem::text_addr()+0x65e5bc)};
+  HELP_CALLING.store(true,Ordering::Release);f(a[0],a[1],a[2],a[3],a[4],a[5],a[6],a[7],a[8],a[9],a[10],a[11],a[12],a[13]);HELP_CALLING.store(false,Ordering::Release);
  }
  /// The game's help bar can carry our message.
  pub fn help_available()->bool{HELP_INSTALLED.load(Ordering::Acquire)&&HELP_SEEN.load(Ordering::Acquire)}
@@ -205,7 +213,7 @@ mod native{
   match want.as_deref(){
    Some(text)=>{
     unsafe{let t=&mut *core::ptr::addr_of_mut!(HELP_TEXT);t.clear();t.extend_from_slice(text.as_bytes());t.push(0);}
-    HELP_OURS.store(true,Ordering::Release);call_help([4,0,MSG_FILE,HELP_ID,0,0]);
+    HELP_OURS.store(true,Ordering::Release);call_help([4,0,MSG_FILE,HELP_ID,0,0,0,0,0,0,0,0,0,0]);
    }
    None=>{HELP_OURS.store(false,Ordering::Release);call_help(core::array::from_fn(|i|HELP_LAST[i].load(Ordering::Relaxed)));}
   }
