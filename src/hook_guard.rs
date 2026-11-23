@@ -7,5 +7,10 @@ pub fn matches(words:[u32;4],expected:[u32;4],site:u32)->bool{
  if words==expected{return true}
  forge_jump(words[0],words[1],site)&&words[2..]==expected[2..]
 }
+/// Three-instruction leaf functions end before the fourth word. That word
+/// belongs to the next function and may have its own independent hook.
+pub fn matches_short(words:[u32;3],expected:[u32;3],site:u32)->bool{
+ words==expected||(forge_jump(words[0],words[1],site)&&words[2]==expected[2])
+}
 /// A site checked by its first word only: that word, or a Forge jump in its place.
 pub fn entry(words:[u32;2],expected:u32,site:u32)->bool{words[0]==expected||forge_jump(words[0],words[1],site)}

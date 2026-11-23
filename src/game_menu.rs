@@ -55,7 +55,7 @@ mod native{
  use super::*;
  use core::sync::atomic::{AtomicBool,AtomicU32,Ordering};
  use crate::native::{rd,valid};
- use forge::log::prelude::info;
+ use forge::log::prelude::{info,warn};
  static INSTALLED:AtomicBool=AtomicBool::new(false);
  static ENTRY:AtomicBool=AtomicBool::new(false);
  static QUEST:AtomicU32=AtomicU32::new(0);
@@ -340,7 +340,17 @@ mod native{
  }
  fn site(base:u32,offset:u32,expected:[u32;4])->bool{
   let words=core::array::from_fn(|i|unsafe{rd(base+offset+i as u32*4)});
-  crate::hook_guard::matches(words,expected,base+offset)
+  let compatible=crate::hook_guard::matches(words,expected,base+offset);
+  if !compatible{warn!("[wishlist] menu hook differs at main+0x{:X}: {:08X?}",offset,words);}
+  compatible
+ }
+ fn pick_site(base:u32)->bool{
+  let offset=0x7918cc;
+  // This leaf ends at BX LR; main+0x7918D8 is a separate function.
+  let words=core::array::from_fn(|i|unsafe{rd(base+offset+i as u32*4)});
+  let compatible=crate::hook_guard::matches_short(words,[0xe59000a8,0xe7d00181,0xe12fff1e],base+offset);
+  if !compatible{warn!("[wishlist] menu hook differs at main+0x{:X}: {:08X?}",offset,words);}
+  compatible
  }
  pub fn install(base:u32)->bool{
   // Both native vtables use this common updater; lobby's override calls it.
@@ -350,8 +360,9 @@ mod native{
   forge::install_hook!(base,update_start_menu);INSTALLED.store(true,Ordering::Release);
   if site(base,0x55bac0,[0xe92d4070,0xe1a04003,0xe1a06002,0xe1a05000]){
    forge::install_hook!(base,message);
-   if site(base,0x78f784,[0xe92d4ff0,0xe24ddfb9,0xe1a04000,0xebfb7bd1])&&site(base,0x791408,[0xe92d4ff0,0xe24dd004,0xe1a04000,0xe59400a8])&&site(base,0x7918cc,[0xe59000a8,0xe7d00181,0xe12fff1e,0xe92d4bf0])
-    &&unsafe{rd(base+0x625138)==0xe92d4bf0&&rd(base+0x54ee34)==0xe1c011b4&&rd(base+0x54f9c0)==0xe59f1024&&rd(base+0x7aa47c)==0xe59f1010}{
+   // Only validate the sites we replace. Shared allocator/list helpers are
+   // called normally: an existing patch or detour there must not hide our entry.
+   if site(base,0x78f784,[0xe92d4ff0,0xe24ddfb9,0xe1a04000,0xebfb7bd1])&&site(base,0x791408,[0xe92d4ff0,0xe24dd004,0xe1a04000,0xe59400a8])&&pick_site(base){
     forge::install_hook!(base,init_town);forge::install_hook!(base,fill_town);forge::install_hook!(base,pick_town);ENTRY.store(true,Ordering::Release);
    }else{info!("[wishlist] start menu entry disabled: menu signatures differ");}
    if site(base,0x65e5bc,[0xe92d41f0,0xe24dd010,0xe1a04000,0xe59f00a4]){forge::install_hook!(base,help);HELP_INSTALLED.store(true,Ordering::Release);}

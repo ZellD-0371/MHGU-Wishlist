@@ -13,6 +13,17 @@ extern crate alloc;
 #[path="../src/sksim_model.rs"]mod sksim_model;
 use model::*;
 #[path="../src/hook_guard.rs"]mod hook_guard;
+#[test]fn menu_leaf_guard_does_not_check_the_next_function(){
+ let site=0x9918cc;
+ let expected=[0xe59000a8,0xe7d00181,0xe12fff1e];
+ // Exact words from the reported failure; the fourth starts another hook.
+ let reported=[expected[0],expected[1],expected[2],0xe51ff004];
+ assert!(hook_guard::matches_short(reported[..3].try_into().unwrap(),expected,site));
+ assert!(hook_guard::matches_short([0xe51ff004,0x03351000,expected[2]],expected,site));
+ assert!(!hook_guard::matches_short([expected[0],expected[1],0],expected,site));
+ assert!(!hook_guard::matches_short([0xe51ff004,0,expected[2]],expected,site));
+ assert!(!hook_guard::matches_short([0xe51ff004,site,expected[2]],expected,site));
+}
 #[test]fn shared_destructor_keeps_existing_forge_hook_chain(){
  let original=[0xe92d4010,0xe1a04000,0xe59f0084,0xe79f0000];
  assert!(hook_guard::matches(original,original,0x76da30));
